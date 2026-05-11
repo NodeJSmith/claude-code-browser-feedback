@@ -257,21 +257,43 @@ function connectWs(sessionId) {
   });
 }
 
+async function registerSession(sessionId, opts = {}) {
+  await fetch(`${BASE_URL}/register-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId,
+      processId: opts.processId || `proc-${sessionId.slice(0, 8)}`,
+      projectDir: opts.projectDir || `/tmp/ws-test-${sessionId}`,
+    }),
+  });
+}
+async function unregisterSession(sessionId, processId) {
+  await fetch(`${BASE_URL}/unregister-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, processId: processId || `proc-${sessionId.slice(0, 8)}` }),
+  });
+}
+
 describe('WebSocket session routing', () => {
-  it('client with ?session=<uuid> registers in correct session bucket', async () => {
+  it('client with registered ?session=<uuid> stays in its bucket', async () => {
     const sessionId = crypto.randomUUID();
+    await registerSession(sessionId);
     const { ws, msg } = await connectWs(sessionId);
 
     try {
       expect(msg.type).toBe('connected');
       expect(msg.sessionId).toBe(sessionId);
       expect(msg.sessionWarning).toBeUndefined();
+      expect(msg.rebound).toBeUndefined();
 
       const resp = await fetch(`${BASE_URL}/status?session=${sessionId}`);
       const data = await resp.json();
       expect(data.connectedClients).toBe(1);
     } finally {
       ws.close();
+      await unregisterSession(sessionId);
     }
   });
 
@@ -290,6 +312,51 @@ describe('WebSocket session routing', () => {
       expect(data.connectedClients).toBe(0);
     } finally {
       ws.close();
+    }
+  });
+
+  it('client with stale session ID is rebound when exactly one session is registered', async () => {
+    // Real-world scenario: server has its own session registered (the
+    // spawned test server). A stale cached widget connects with an unknown
+    // UUID; the server should rebind it to the live session (Layer 2 of #46).
+    const staleId = crypto.randomUUID();
+
+    // Ensure only the server's own session is registered. (Other tests
+    // clean up after themselves; we just observe how many sessions exist.)
+    const sessionsResp = await fetch(`${BASE_URL}/sessions`);
+    const sessionsData = await sessionsResp.json();
+    expect(sessionsData.sessions.length).toBe(1);
+    const liveSession = sessionsData.sessions[0].sessionId;
+
+    const { ws, msg } = await connectWs(staleId);
+    try {
+      expect(msg.type).toBe('connected');
+      expect(msg.sessionId).toBe(liveSession);
+      expect(msg.rebound).toEqual({ from: staleId, to: liveSession });
+    } finally {
+      ws.close();
+    }
+  });
+
+  it('client with unknown session is rejected when multiple sessions registered', async () => {
+    const sessionA = crypto.randomUUID();
+    const sessionB = crypto.randomUUID();
+    await registerSession(sessionA, { projectDir: '/tmp/multi-a' });
+    await registerSession(sessionB, { projectDir: '/tmp/multi-b' });
+
+    const staleId = crypto.randomUUID();
+    try {
+      const { ws, msg } = await connectWs(staleId);
+      try {
+        expect(msg.type).toBe('session_invalid');
+        expect(msg.providedSession).toBe(staleId);
+        expect(msg.knownSessions).toEqual(expect.arrayContaining([sessionA, sessionB]));
+      } finally {
+        ws.close();
+      }
+    } finally {
+      await unregisterSession(sessionA);
+      await unregisterSession(sessionB);
     }
   });
 
@@ -354,6 +421,7 @@ describe('WebSocket session routing', () => {
 
   it('second client on same session triggers duplicate warning', async () => {
     const sessionId = crypto.randomUUID();
+    await registerSession(sessionId);
     const { ws: ws1, msg: msg1 } = await connectWs(sessionId);
 
     try {
@@ -374,6 +442,25 @@ describe('WebSocket session routing', () => {
       }
     } finally {
       ws1.close();
+      await unregisterSession(sessionId);
     }
+  });
+});
+
+// ============================================
+// Orphan bucket reporting (Layer 4 of #46)
+// ============================================
+
+describe('orphan bucket reporting', () => {
+  it('GET /status exposes orphanSessions field', async () => {
+    const resp = await fetch(`${BASE_URL}/status`);
+    const data = await resp.json();
+    expect(Array.isArray(data.orphanSessions)).toBe(true);
+  });
+
+  it('GET /feedback exposes orphans field', async () => {
+    const resp = await fetch(`${BASE_URL}/feedback?session=${crypto.randomUUID()}`);
+    const data = await resp.json();
+    expect(Array.isArray(data.orphans)).toBe(true);
   });
 });

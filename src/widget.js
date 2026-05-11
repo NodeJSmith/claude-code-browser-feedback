@@ -21,9 +21,37 @@
   let shadowRoot = null;    // Shadow DOM root for style isolation
 
   // Configuration
-  const WS_URL = '__WEBSOCKET_URL__'; // Injected by server
-  const WIDGET_VERSION = '__WIDGET_VERSION__'; // Injected by server
+  // Base WS URL is injected at serve time; the session is read from the
+  // <script src=...?session=...> tag at runtime, so a cached bundle can
+  // never carry a stale session ID (fix for #46).
+  const WS_BASE_URL = '__WEBSOCKET_BASE_URL__';
+  const WIDGET_VERSION = '__WIDGET_VERSION__';
   const WIDGET_ID = 'claude-feedback-widget';
+
+  // UUID format used by deriveSessionId on the server
+  const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  function resolveSessionFromScript() {
+    const candidates = [];
+    if (document.currentScript && document.currentScript.src) {
+      candidates.push(document.currentScript.src);
+    }
+    const tagged = document.getElementById('claude-feedback-widget-script');
+    if (tagged && tagged.src) candidates.push(tagged.src);
+    for (const src of candidates) {
+      try {
+        const u = new URL(src, location.href);
+        const s = u.searchParams.get('session');
+        if (s && SESSION_ID_RE.test(s)) return s;
+      } catch (_) { /* fall through */ }
+    }
+    return null;
+  }
+
+  let currentSessionId = resolveSessionFromScript();
+  function buildWsUrl(sessionId) {
+    return sessionId ? `${WS_BASE_URL}?session=${sessionId}` : WS_BASE_URL;
+  }
   
   // State
   let ws = null;
@@ -945,10 +973,10 @@
     if (typeof html2canvas !== 'undefined') return Promise.resolve();
     if (html2canvasPromise) return html2canvasPromise;
 
-    // Derive HTTP URL from WS_URL (same host/port)
+    // Derive HTTP URL from the WS base (same host/port)
     let baseUrl;
     try {
-      const wsUrl = new URL(WS_URL);
+      const wsUrl = new URL(WS_BASE_URL);
       baseUrl = `http://${wsUrl.host}`;
     } catch {
       baseUrl = `http://localhost:9877`;
@@ -1024,7 +1052,7 @@
 
   function connectWebSocket() {
     try {
-      ws = new WebSocket(WS_URL);
+      ws = new WebSocket(buildWsUrl(currentSessionId));
       
       ws.onopen = () => {
         isConnected = true;
@@ -1202,6 +1230,27 @@
       }
       if (message.duplicateWarning) {
         console.warn('[Claude Feedback]', message.duplicateWarning);
+      }
+      if (message.rebound && message.sessionId) {
+        // Server rebound us to a live session because our cached session ID
+        // was stale. Adopt the new ID so subsequent reconnects use it directly.
+        console.warn(`[Claude Feedback] Session rebound: ${message.rebound.from} -> ${message.rebound.to}`);
+        currentSessionId = message.sessionId;
+      }
+    } else if (message.type === 'session_invalid') {
+      // The server doesn't recognize our session ID and can't auto-rebind.
+      // Try a fresh read from the script tag (extension may have refreshed it);
+      // if it's still stale, prompt the user to reload.
+      const fresh = resolveSessionFromScript();
+      if (fresh && fresh !== currentSessionId) {
+        console.warn(`[Claude Feedback] Session refreshed from script src: ${currentSessionId} -> ${fresh}`);
+        currentSessionId = fresh;
+        // The current socket was closed by the server. Reconnect with the new ID.
+        if (_wsReconnectTimeout) clearTimeout(_wsReconnectTimeout);
+        _wsReconnectTimeout = setTimeout(connectWebSocket, 100);
+      } else {
+        console.warn('[Claude Feedback] Session invalid:', message);
+        showSessionInvalidBanner(message);
       }
     } else if (message.type === 'pending_status') {
       // Update pending items from server
@@ -1753,6 +1802,37 @@
 
   function showNotification(message) {
     console.log('[Claude Feedback]', message);
+  }
+
+  // Visible banner shown when the server tells us our session ID is stale and
+  // we can't recover automatically. Lives directly on document.body (not the
+  // shadow root) so it survives even if the widget host is torn down.
+  function showSessionInvalidBanner(message) {
+    const existing = document.getElementById('claude-feedback-session-invalid');
+    if (existing) return;
+    const banner = document.createElement('div');
+    banner.id = 'claude-feedback-session-invalid';
+    banner.style.cssText = [
+      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:2147483647',
+      'background:#b91c1c', 'color:#fff', 'padding:10px 16px',
+      'font:14px/1.4 -apple-system,system-ui,sans-serif',
+      'box-shadow:0 2px 8px rgba(0,0,0,.2)', 'display:flex',
+      'align-items:center', 'justify-content:space-between', 'gap:12px',
+    ].join(';');
+    const text = document.createElement('span');
+    text.textContent = (message && message.reason)
+      || 'Claude feedback widget: session changed. Reload the page to reconnect.';
+    const reload = document.createElement('button');
+    reload.textContent = 'Reload';
+    reload.style.cssText = 'background:#fff;color:#b91c1c;border:0;border-radius:4px;padding:6px 12px;font-weight:600;cursor:pointer';
+    reload.addEventListener('click', () => location.reload());
+    const dismiss = document.createElement('button');
+    dismiss.textContent = '✕';
+    dismiss.setAttribute('aria-label', 'Dismiss');
+    dismiss.style.cssText = 'background:transparent;color:#fff;border:0;font-size:18px;cursor:pointer;padding:0 4px';
+    dismiss.addEventListener('click', () => banner.remove());
+    banner.append(text, reload, dismiss);
+    document.body.appendChild(banner);
   }
 
   // ============================================

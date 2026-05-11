@@ -8,6 +8,7 @@ import {
   getPendingSummary,
   detectProjectUrl,
   formatFeedbackAsContent,
+  parseSessionFromScriptSrc,
 } from '../src/utils.js';
 
 // ============================================
@@ -291,5 +292,35 @@ services:
       url: 'https://mysite.local',
       detectedFrom: 'docker-compose.yml',
     });
+  });
+});
+
+// ============================================
+// parseSessionFromScriptSrc
+// ============================================
+
+describe('parseSessionFromScriptSrc', () => {
+  const valid = '550e8400-e29b-41d4-a716-446655440000';
+
+  it('extracts a valid session UUID from the query string', () => {
+    expect(parseSessionFromScriptSrc(`http://localhost:9877/widget.js?session=${valid}`)).toBe(valid);
+  });
+
+  it('returns null when no session param is present', () => {
+    expect(parseSessionFromScriptSrc('http://localhost:9877/widget.js')).toBeNull();
+  });
+
+  it('returns null for a malformed session value', () => {
+    expect(parseSessionFromScriptSrc('http://localhost:9877/widget.js?session=not-a-uuid')).toBeNull();
+  });
+
+  it('returns null for empty input', () => {
+    expect(parseSessionFromScriptSrc('')).toBeNull();
+    expect(parseSessionFromScriptSrc(null)).toBeNull();
+    expect(parseSessionFromScriptSrc(undefined)).toBeNull();
+  });
+
+  it('parses session from a relative URL', () => {
+    expect(parseSessionFromScriptSrc(`/widget.js?session=${valid}`)).toBe(valid);
   });
 });

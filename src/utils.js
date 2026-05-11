@@ -21,6 +21,20 @@ export function isValidSessionId(id) {
   return typeof id === 'string' && UUID_RE.test(id);
 }
 
+// Extract the session ID from a widget script URL's `?session=` query.
+// Returns null if absent or malformed. Validated against the UUID format
+// so a junk query value can't pollute server buckets.
+export function parseSessionFromScriptSrc(src) {
+  if (typeof src !== 'string' || src.length === 0) return null;
+  try {
+    const u = new URL(src, 'http://localhost');
+    const s = u.searchParams.get('session');
+    return s && isValidSessionId(s) ? s : null;
+  } catch {
+    return null;
+  }
+}
+
 // Generate pending feedback summary (without full payloads)
 export function getPendingSummary(pending) {
   if (!Array.isArray(pending)) pending = [];
