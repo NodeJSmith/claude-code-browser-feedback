@@ -574,6 +574,7 @@ wss.on("connection", (ws, req) => {
           reason: 'Session ID not recognized. Reload the page to fetch the current widget.',
         }));
       } catch (_) { /* ignore */ }
+      // 4001: application close code, "session unknown to server" (RFC 6455 §7.4.2).
       ws.close(4001, 'session_invalid');
       return;
     }
@@ -640,10 +641,10 @@ wss.on("connection", (ws, req) => {
       if (message.type === "send_to_claude") {
         const pending = getSessionPending(sid);
         const ready = getSessionReady(sid);
-        // Move all pending items to ready
+        // Move all pending items to ready. setSessionPending below persists
+        // both maps, so the in-place ready.push is captured in the same write.
         ready.push(...pending);
         setSessionPending(sid, []);
-        persistSession(sid);
         broadcastPendingStatus(sid);
 
         const count = ready.length;

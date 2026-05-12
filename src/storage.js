@@ -8,8 +8,11 @@ import { isValidSessionId } from "./utils.js";
 // but doesn't pollute the user's home or the project tree.
 const ROOT = path.join(os.tmpdir(), "claude-browser-feedback");
 
+// `mode` only applies on first creation. If ROOT was created by an older
+// version without the mode arg, the permissions stay whatever they were —
+// usually fine because the OS clears tmp on reboot.
 function ensureRoot() {
-  try { fs.mkdirSync(ROOT, { recursive: true }); } catch { /* ignore */ }
+  try { fs.mkdirSync(ROOT, { recursive: true, mode: 0o700 }); } catch { /* ignore */ }
 }
 
 function fileFor(sessionId) {
@@ -61,7 +64,7 @@ export function flush(sessionId) {
     ensureRoot();
     const target = fileFor(sessionId);
     const tmp = `${target}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(entry.state), "utf8");
+    fs.writeFileSync(tmp, JSON.stringify(entry.state), { encoding: "utf8", mode: 0o600 });
     fs.renameSync(tmp, target);
   } catch (err) {
     console.error(`[browser-feedback-mcp] storage flush failed for ${sessionId}: ${err.message}`);
