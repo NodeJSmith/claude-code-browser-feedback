@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Browser feedback no longer goes to a stale session bucket when the widget bundle is cached across MCP restarts (#46). The session ID is now read from the script tag's `?session=` query at runtime instead of being baked into `widget.js` at serve time, so a cached bundle can never carry a stale session.
+- `/widget.js` is served with `Cache-Control: no-store` so browsers cannot reuse a previous bundle.
+- WebSocket connections that arrive with an unknown session ID are auto-rebound to the live session when exactly one MCP session is registered, or rejected with a `session_invalid` message (and the widget shows a visible reload banner) when the server can't safely guess.
+- Pending and ready feedback queues are now persisted to disk (`os.tmpdir()/claude-browser-feedback/<sessionId>.json`) and rehydrated on server boot, so feedback survives crashes and restarts.
+
+### Added
+
+- `get_pending_feedback`, `get_connection_status`, and `/status` now surface orphan feedback buckets (feedback filed under a session ID that no MCP session is listening for), and auto-rescue them into the current session when it is the only one registered.
+
 ## [0.6.6] - 2026-04-22
 
 ### Fixed

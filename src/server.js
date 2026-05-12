@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { createRequire } from "module";
 import { execFile } from "child_process";
 import { deriveSessionId, isValidSessionId, getPendingSummary, detectProjectUrl, formatFeedbackAsContent } from "./utils.js";
+import * as storage from "./storage.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,13 +39,22 @@ const connectedClientsBySession = new Map();  // sessionId -> Set<WebSocket>
 let connectedClients = new Set();             // All clients (for total count in /status)
 let isHttpServerOwner = false; // Track if this instance owns the HTTP server
 
-// Session-partitioned data accessors
+// Session-partitioned data accessors. The owner process persists pending+ready
+// queues to disk via storage.js so feedback survives crashes and restarts.
+function persistSession(sid) {
+  if (!isHttpServerOwner || !isValidSessionId(sid)) return;
+  storage.save(sid, {
+    pending: pendingFeedbackBySession.get(sid) || [],
+    ready: readyFeedbackBySession.get(sid) || [],
+  });
+}
 function getSessionPending(sid) {
   if (!pendingFeedbackBySession.has(sid)) pendingFeedbackBySession.set(sid, []);
   return pendingFeedbackBySession.get(sid);
 }
 function setSessionPending(sid, arr) {
   pendingFeedbackBySession.set(sid, arr);
+  persistSession(sid);
 }
 function getSessionReady(sid) {
   if (!readyFeedbackBySession.has(sid)) readyFeedbackBySession.set(sid, []);
@@ -52,6 +62,7 @@ function getSessionReady(sid) {
 }
 function setSessionReady(sid, arr) {
   readyFeedbackBySession.set(sid, arr);
+  persistSession(sid);
 }
 function getSessionResolvers(sid) {
   if (!feedbackResolversBySession.has(sid)) feedbackResolversBySession.set(sid, []);
@@ -60,6 +71,51 @@ function getSessionResolvers(sid) {
 function getSessionClients(sid) {
   if (!connectedClientsBySession.has(sid)) connectedClientsBySession.set(sid, new Set());
   return connectedClientsBySession.get(sid);
+}
+
+// Find feedback buckets that aren't tied to any registered MCP session. These
+// are the symptom of issue #46: a stale widget filed feedback under a session
+// ID that nobody is listening for. Used to surface (and optionally auto-rescue)
+// the data via the MCP tools.
+function findOrphanBuckets() {
+  const orphans = [];
+  const seen = new Set();
+  for (const [sid, items] of pendingFeedbackBySession) {
+    if (!isValidSessionId(sid)) continue;
+    if (sessionRegistry.has(sid)) continue;
+    seen.add(sid);
+    orphans.push({
+      sessionId: sid,
+      pendingCount: items.length,
+      readyCount: (readyFeedbackBySession.get(sid) || []).length,
+      clientCount: (connectedClientsBySession.get(sid) || new Set()).size,
+    });
+  }
+  for (const [sid, items] of readyFeedbackBySession) {
+    if (!isValidSessionId(sid)) continue;
+    if (sessionRegistry.has(sid) || seen.has(sid)) continue;
+    orphans.push({
+      sessionId: sid,
+      pendingCount: 0,
+      readyCount: items.length,
+      clientCount: (connectedClientsBySession.get(sid) || new Set()).size,
+    });
+  }
+  return orphans.filter(o => o.pendingCount > 0 || o.readyCount > 0);
+}
+
+// Move all pending+ready feedback from an orphan bucket into the target
+// session's queues, then drop the orphan. Used when exactly one MCP session
+// is registered and auto-rescue is safe.
+function migrateOrphanInto(targetSid, orphanSid) {
+  const oldPending = pendingFeedbackBySession.get(orphanSid) || [];
+  const oldReady = readyFeedbackBySession.get(orphanSid) || [];
+  if (oldPending.length) getSessionPending(targetSid).push(...oldPending);
+  if (oldReady.length) getSessionReady(targetSid).push(...oldReady);
+  pendingFeedbackBySession.delete(orphanSid);
+  readyFeedbackBySession.delete(orphanSid);
+  storage.remove(orphanSid);
+  persistSession(targetSid);
 }
 
 // Helper to parse JSON body from an HTTP request
@@ -229,21 +285,22 @@ const httpServer = http.createServer((req, res) => {
 
   if (urlObj.pathname === "/widget.js") {
     const widgetPath = path.join(__dirname, "widget.js");
-    const sessionParam = urlObj.searchParams.get('session') || '';
     fs.readFile(widgetPath, "utf8", (err, content) => {
       if (err) {
         res.writeHead(500);
         res.end("Error loading widget");
         return;
       }
-      // Inject runtime values into the widget (including session ID for isolation)
-      const wsUrl = sessionParam
-        ? `ws://localhost:${PORT}/ws?session=${sessionParam}`
-        : `ws://localhost:${PORT}/ws`;
+      // The session is NOT baked into the bundle. The widget reads it from
+      // its own <script src=...?session=...> at runtime, so a cached bundle
+      // can never carry a stale session ID.
       const injectedContent = content
-        .replace("__WEBSOCKET_URL__", wsUrl)
+        .replace("__WEBSOCKET_BASE_URL__", `ws://localhost:${PORT}/ws`)
         .replace("__WIDGET_VERSION__", PKG_VERSION);
-      res.writeHead(200, { "Content-Type": "application/javascript" });
+      res.writeHead(200, {
+        "Content-Type": "application/javascript",
+        "Cache-Control": "no-store",
+      });
       res.end(injectedContent);
     });
     return;
@@ -286,6 +343,7 @@ const httpServer = http.createServer((req, res) => {
       connectedClients: sessionId ? getSessionClients(sessionId).size : connectedClients.size,
       pendingFeedback: sessionId ? getSessionPending(sessionId).length : 0,
       sessions: sessionRegistry.size,
+      orphanSessions: findOrphanBuckets(),
     };
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(response));
@@ -297,12 +355,31 @@ const httpServer = http.createServer((req, res) => {
     const shouldClear = urlObj.searchParams.get("clear") !== "false";
     const sessionId = urlObj.searchParams.get("session") || "unmatched";
     const sessionReady = getSessionReady(sessionId);
-    const feedback = [...sessionReady];
+    let feedback = [...sessionReady];
     if (shouldClear) {
       setSessionReady(sessionId, []);
     }
+    // Same orphan rescue logic as get_pending_feedback (Layer 4 of #46).
+    let orphans = [];
+    if (feedback.length === 0 && isValidSessionId(sessionId) && sessionRegistry.has(sessionId)) {
+      orphans = findOrphanBuckets();
+      if (orphans.length > 0 && sessionRegistry.size === 1) {
+        for (const o of orphans) {
+          console.error(`[browser-feedback-mcp] /feedback rescuing orphan ${o.sessionId} into ${sessionId}`);
+          migrateOrphanInto(sessionId, o.sessionId);
+        }
+        const rescuedReady = getSessionReady(sessionId);
+        const rescuedPending = getSessionPending(sessionId);
+        feedback = [...rescuedReady, ...rescuedPending];
+        if (shouldClear) {
+          setSessionReady(sessionId, []);
+          setSessionPending(sessionId, []);
+        }
+        orphans = []; // consumed
+      }
+    }
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ feedback }));
+    res.end(JSON.stringify({ feedback, orphans }));
     return;
   }
 
@@ -397,6 +474,8 @@ const httpServer = http.createServer((req, res) => {
           feedbackResolversBySession.delete(existingId);
           connectedClientsBySession.delete(existingId);
           sessionRegistry.delete(existingId);
+          storage.remove(existingId);
+          persistSession(data.sessionId);
           console.error(`[browser-feedback-mcp] Migrated session data: ${existingId} -> ${data.sessionId}`);
         }
       }
@@ -469,7 +548,39 @@ wss.on("connection", (ws, req) => {
   // Extract session ID from WebSocket URL query params
   const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
   const rawSession = reqUrl.searchParams.get('session');
-  const sessionId = rawSession || 'unmatched';
+  let sessionId = rawSession || 'unmatched';
+  let rebindReason = null;
+
+  // If the client connected with a session ID we don't know about (stale
+  // cached widget, pre-deterministic-ID bundle, etc.), try to recover.
+  if (rawSession && !sessionRegistry.has(rawSession)) {
+    const registered = Array.from(sessionRegistry.keys());
+    if (registered.length === 1) {
+      // Exactly one registered session — safe to rebind. With deterministic
+      // session IDs there can only be one MCP session per projectDir, so this
+      // is the right session by construction.
+      const target = registered[0];
+      console.error(`[browser-feedback-mcp] Rebinding WS client from unknown session ${rawSession} -> ${target}`);
+      rebindReason = { from: rawSession, to: target };
+      sessionId = target;
+    } else if (registered.length > 1) {
+      // Ambiguous — don't guess. Tell the widget so it can refresh.
+      console.error(`[browser-feedback-mcp] WS client connected with unknown session ${rawSession}; ${registered.length} sessions registered. Sending session_invalid.`);
+      try {
+        ws.send(JSON.stringify({
+          type: 'session_invalid',
+          providedSession: rawSession,
+          knownSessions: registered,
+          reason: 'Session ID not recognized. Reload the page to fetch the current widget.',
+        }));
+      } catch (_) { /* ignore */ }
+      // 4001: application close code, "session unknown to server" (RFC 6455 §7.4.2).
+      ws.close(4001, 'session_invalid');
+      return;
+    }
+    // If no sessions are registered yet, leave sessionId as the raw value;
+    // it may match once an MCP session boots.
+  }
   ws._sessionId = sessionId;
 
   if (!rawSession) {
@@ -491,6 +602,9 @@ wss.on("connection", (ws, req) => {
   };
   if (!rawSession) {
     connectionMsg.sessionWarning = "No session ID provided. This connection is not linked to any Claude Code session.";
+  }
+  if (rebindReason) {
+    connectionMsg.rebound = rebindReason;
   }
   if (existingCount > 0) {
     connectionMsg.duplicateWarning = `This session already has ${existingCount} other connected client(s). The same site may be open in another tab.`;
@@ -515,6 +629,7 @@ wss.on("connection", (ws, req) => {
         };
 
         getSessionPending(sid).push(feedback);
+        persistSession(sid);
 
         // Acknowledge receipt
         ws.send(JSON.stringify({ type: "feedback_received", id: feedback.id }));
@@ -526,7 +641,8 @@ wss.on("connection", (ws, req) => {
       if (message.type === "send_to_claude") {
         const pending = getSessionPending(sid);
         const ready = getSessionReady(sid);
-        // Move all pending items to ready
+        // Move all pending items to ready. setSessionPending below persists
+        // both maps, so the in-place ready.push is captured in the same write.
         ready.push(...pending);
         setSessionPending(sid, []);
         broadcastPendingStatus(sid);
@@ -1172,6 +1288,18 @@ The widget only loads in development (localhost) by default.
         const result = await fetchReadyFeedback(shouldClear);
         if (result && result.feedback) {
           if (result.feedback.length === 0) {
+            const orphans = Array.isArray(result.orphans) ? result.orphans : [];
+            if (orphans.length > 0) {
+              const hint = orphans.map(o => `  - ${o.sessionId} (${o.pendingCount} pending, ${o.readyCount} ready, ${o.clientCount} client(s))`).join('\n');
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `No pending feedback for this session.\n\nHowever, ${orphans.length} orphan bucket(s) hold feedback under session IDs not tied to any MCP session (likely a stale widget cache — see #46):\n${hint}\n\nReload the browser tab so the widget rebinds to the current session, then try again.`,
+                  },
+                ],
+              };
+            }
             return {
               content: [
                 {
@@ -1197,12 +1325,45 @@ The widget only loads in development (localhost) by default.
       }
 
       const sessionReady = getSessionReady(SESSION_ID);
-      const feedback = [...sessionReady];
+      let feedback = [...sessionReady];
       if (shouldClear) {
         setSessionReady(SESSION_ID, []);
       }
 
+      // If our own bucket is empty but a stale widget filed feedback under an
+      // unknown session ID, recover it. With deterministic IDs there can only
+      // be one MCP session per projectDir, so when exactly one is registered
+      // it's safe to fold the orphan bucket into ours. Otherwise just report.
       if (feedback.length === 0) {
+        const orphans = findOrphanBuckets();
+        if (orphans.length > 0) {
+          if (sessionRegistry.size === 1) {
+            for (const o of orphans) {
+              console.error(`[browser-feedback-mcp] Rescuing orphan bucket ${o.sessionId} into ${SESSION_ID} (${o.pendingCount} pending, ${o.readyCount} ready)`);
+              migrateOrphanInto(SESSION_ID, o.sessionId);
+            }
+            const rescuedReady = getSessionReady(SESSION_ID);
+            const rescuedPending = getSessionPending(SESSION_ID);
+            feedback = [...rescuedReady, ...rescuedPending];
+            if (shouldClear) {
+              setSessionReady(SESSION_ID, []);
+              setSessionPending(SESSION_ID, []);
+            }
+            if (feedback.length > 0) {
+              return { content: formatFeedbackAsContent(feedback) };
+            }
+          } else {
+            const hint = orphans.map(o => `  - ${o.sessionId} (${o.pendingCount} pending, ${o.readyCount} ready, ${o.clientCount} client(s))`).join('\n');
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `No pending feedback for this session.\n\nHowever, ${orphans.length} orphan bucket(s) hold feedback under session IDs not tied to any MCP session (likely a stale widget cache — see #46):\n${hint}\n\nReload the browser tab so the widget rebinds to the current session, then try again.`,
+                },
+              ],
+            };
+          }
+        }
         return {
           content: [
             {
@@ -1484,6 +1645,7 @@ The widget only loads in development (localhost) by default.
                     serverUrl: `http://localhost:${PORT}`,
                     widgetUrl: `http://localhost:${PORT}/widget.js?session=${SESSION_ID}`,
                     sessionId: SESSION_ID,
+                    orphanSessions: status.orphanSessions || [],
                     note: "Status fetched from running server (this MCP instance is proxying)",
                   },
                   null,
@@ -1526,6 +1688,7 @@ The widget only loads in development (localhost) by default.
                 serverUrl: `http://localhost:${PORT}`,
                 widgetUrl: `http://localhost:${PORT}/widget.js?session=${SESSION_ID}`,
                 sessionId: SESSION_ID,
+                orphanSessions: findOrphanBuckets(),
               },
               null,
               2
@@ -1757,6 +1920,10 @@ function shutdown(reason) {
 
   // Only close HTTP server if we own it
   if (isHttpServerOwner) {
+    // Flush any pending disk writes before exiting so debounced feedback
+    // isn't lost on shutdown.
+    try { storage.flushAll(); } catch { /* ignore */ }
+
     // Remove own session from registry only if we still own it
     const ownSession = sessionRegistry.get(SESSION_ID);
     if (ownSession && ownSession.processId === PROCESS_ID) {
@@ -1869,6 +2036,20 @@ async function main() {
   // Register this session
   const detected = detectProjectUrl(PROJECT_DIR);
   if (isHttpServerOwner) {
+    // Rehydrate any persisted feedback queues from disk so feedback submitted
+    // before a crash/restart isn't lost (fix for #46).
+    try {
+      for (const sid of storage.listSessions()) {
+        const { pending, ready } = storage.load(sid);
+        if (pending.length || ready.length) {
+          pendingFeedbackBySession.set(sid, pending);
+          readyFeedbackBySession.set(sid, ready);
+          console.error(`[browser-feedback-mcp] Rehydrated session ${sid}: ${pending.length} pending, ${ready.length} ready`);
+        }
+      }
+    } catch (err) {
+      console.error(`[browser-feedback-mcp] Rehydrate failed: ${err.message}`);
+    }
     // Owner registers directly
     sessionRegistry.set(SESSION_ID, {
       sessionId: SESSION_ID,
