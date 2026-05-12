@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-12
+
 ### Fixed
 
 - Browser feedback no longer goes to a stale session bucket when the widget bundle is cached across MCP restarts (#46). The session ID is now read from the script tag's `?session=` query at runtime instead of being baked into `widget.js` at serve time, so a cached bundle can never carry a stale session.
