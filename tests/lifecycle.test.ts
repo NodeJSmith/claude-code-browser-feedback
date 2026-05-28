@@ -154,7 +154,6 @@ describe("lifecycle: in-flight counter", () => {
     const { pushFeedback, drainInFlight } = createPushFeedbackWithCounter(
       mockServer.asServer,
       SESSION_ID,
-      50, // 50ms drain timeout
     );
 
     void pushFeedback([makeItem()]);
@@ -163,12 +162,12 @@ describe("lifecycle: in-flight counter", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     const start = Date.now();
-    await drainInFlight();
+    await drainInFlight(50); // 50ms drain timeout
     const elapsed = Date.now() - start;
 
-    // Should have timed out (50ms timeout)
+    // Should have timed out (~50ms)
     expect(elapsed).toBeGreaterThanOrEqual(40);
-    expect(elapsed).toBeLessThan(2000);
+    expect(elapsed).toBeLessThan(500);
   }, 10000);
 });
 

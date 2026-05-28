@@ -163,7 +163,16 @@ const mcpServer = new Server(
   },
 );
 
-const { pushFeedback, drainInFlight } = createPushFeedback({ mcpServer, sessionId: SESSION_ID });
+const handle = createPushFeedback({ mcpServer, sessionId: SESSION_ID });
+const drainInFlight = handle.drainInFlight;
+
+function pushFeedback(items: FeedbackItem[]): Promise<PushResult> {
+  if (isHttpServerOwner()) {
+    return handle.pushFeedback(items);
+  }
+  return proxy.pushFeedbackViaHttp(items) as Promise<PushResult>;
+}
+
 const { httpServer } = createHttpServer({ port: PORT, pkgVersion: PKG_VERSION, srcDir: __dirname, pushFeedback });
 const { wss, broadcast } = createWsServer({ httpServer, port: PORT, pushFeedback });
 
