@@ -1,7 +1,7 @@
 ---
 task_id: "T02"
 title: "Add channel capability and pushFeedback callback"
-status: "planned"
+status: "done"
 depends_on: ["T01"]
 implements: ["FR#1", "FR#2", "FR#6", "AC#1", "AC#8"]
 ---
