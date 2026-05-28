@@ -55,11 +55,7 @@ Remove the three pull-based HTTP endpoints, add the authenticated `POST /push-no
    - Add `req.on("error", reject)` to handle mid-stream aborts
    - Add a byte accumulator: reject with a `PayloadTooLarge` error when accumulated bytes exceed `16 * 1024 * 1024` (16MB)
 
-5. **Clean up imports** — remove `getSessionReady`, `setSessionReady`, `findOrphanBuckets`, `migrateOrphanInto` from `./session-store.ts` imports (they were used by the removed endpoints).
-
-6. **Clean up `/register-session`** — the handler at line 240 copies `getSessionReady(existingId)` during session migration. Since ready queue is gone, remove those lines. Keep the pending migration and client rebinding.
-
-7. **Clean up `/status`** — the handler references `findOrphanBuckets()` at line 129 for `orphanSessions`. Remove the `orphanSessions` field from the status response.
+5. Note: dead imports (`getSessionReady`, `setSessionReady`, `findOrphanBuckets`, `migrateOrphanInto`), the ready migration in `/register-session`, and the `orphanSessions` field in `/status` were already cleaned up in T04. This task only removes the 3 pull HTTP endpoint handlers and adds the new one.
 
 ### proxy-client.ts changes
 

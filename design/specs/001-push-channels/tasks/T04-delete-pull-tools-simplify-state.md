@@ -43,25 +43,32 @@ Remove all 5 pull-based MCP tools and their handlers, simplify session-store by 
 
 16. Remove `formatFeedbackAsContent` function and its supporting types (`TextContent`, `ImageContent`, `ContentBlock`).
 
+### http-server.ts — remove dead imports and orphan/ready code
+
+17. **Remove imports**: `getSessionReady`, `setSessionReady`, `findOrphanBuckets`, `migrateOrphanInto` from `./session-store.ts`.
+18. **Remove ready migration in `/register-session`** (around lines 246–249): the lines that copy `getSessionReady(existingId)` into the new session. Keep the pending migration and WebSocket client rebinding.
+19. **Remove `orphanSessions` from `/status`** (line 129): remove `findOrphanBuckets()` call and the `orphanSessions` field from the response.
+20. Note: The 3 pull HTTP endpoints (`GET /feedback`, `GET /pending-summary`, `DELETE /feedback/:id`) are removed in T05 along with the proxy relay addition. This task only removes the dead imports and orphan/ready references that would cause typecheck failures.
+
 ### server.ts — clean up imports
 
-17. Remove `setSessionReady` import from `./session-store.ts` (line 17).
-18. In the storage rehydration loop (lines 163–172), remove the `ready` destructuring and the `setSessionReady` call. Only rehydrate `pending`.
+21. Remove `setSessionReady` import from `./session-store.ts` (line 17).
+22. In the storage rehydration loop (lines 163–172), remove the `ready` destructuring and the `setSessionReady` call. Only rehydrate `pending`.
 
 ### Update tests
 
-19. **tests/storage.test.ts**: Update assertions from `{ pending: [], ready: [] }` to `{ pending: [] }`. Update save/load tests to not include `ready`. Add a test that loading a legacy file with a `ready` field returns only `{ pending }` (ready is ignored).
+23. **tests/storage.test.ts**: Update assertions from `{ pending: [], ready: [] }` to `{ pending: [] }`. Update save/load tests to not include `ready`. Add a test that loading a legacy file with a `ready` field returns only `{ pending }` (ready is ignored).
 
-20. **tests/utils.test.ts**: Remove the entire `describe("formatFeedbackAsContent", ...)` block (lines 136–end). Keep tests for `deriveSessionId`, `isValidSessionId`, `getPendingSummary`, `detectProjectUrl`.
+24. **tests/utils.test.ts**: Remove the entire `describe("formatFeedbackAsContent", ...)` block (lines 136–end). Keep tests for `deriveSessionId`, `isValidSessionId`, `getPendingSummary`, `detectProjectUrl`.
 
-21. **tests/http-endpoints.test.ts**: Remove the test `GET /feedback?session=<id> returns empty for unknown session` (line 187). Remove the test `DELETE /feedback/<id>?session=<id> returns 404` (line 195). Remove the `describe("orphan bucket reporting", ...)` block (line 444).
+25. **tests/http-endpoints.test.ts**: Remove the test `GET /feedback?session=<id> returns empty for unknown session` (line 187). Remove the test `DELETE /feedback/<id>?session=<id> returns 404` (line 195). Remove the `describe("orphan bucket reporting", ...)` block (line 444).
 
 ## Focus
-- This is a big diff but it's all deletion. Verify with `npm run typecheck` that no remaining code references the removed exports.
+- This is a big diff but it's all deletion. Verify with `npm run typecheck` that no remaining code references the removed exports. Line numbers are approximate — use the symbol names as the reliable anchor.
 - `broadcastPendingStatus` in `http-server.ts` is still needed (used by ws-server.ts). Do NOT remove it. Only remove its import from mcp-tools.ts.
 - `getPendingSummary` in utils.ts is still needed (used by ws-server.ts and http-server.ts via `broadcastPendingStatus`). Only remove its import from mcp-tools.ts if `preview_pending_feedback` was the only user there.
 - The `get_connection_status` tool handler (line 982) references `findOrphanBuckets()` at line 1042. This reference must be removed — the orphan bucket info was returned in the status JSON. Remove the `orphanSessions` field from the `get_connection_status` response for the owner path. The proxy path also references `status.orphanSessions` — remove that field too.
-- `http-server.ts` imports `getSessionReady`, `setSessionReady`, `findOrphanBuckets`, `migrateOrphanInto` — these will be cleaned up in T05 when the HTTP endpoints are removed.
+- `http-server.ts` dead imports and orphan/ready code are cleaned up in this task (steps 17–20) so that typecheck passes. The 3 pull HTTP endpoints themselves are removed in T05.
 
 ## Verify
 - [ ] FR#7: ListTools response contains zero polling-based tools (verify the 5 names are absent)
