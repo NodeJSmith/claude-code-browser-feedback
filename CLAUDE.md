@@ -55,5 +55,5 @@ Work these in order — each depends on the previous:
 
 ## Configuration
 
-- `FEEDBACK_PORT` (default: 9877) — HTTP/WebSocket server port.
-- `FEEDBACK_HOST` — planned in #1 to make bind address configurable (currently hardcoded to `0.0.0.0`).
+- `FEEDBACK_PORT` (default: `9877`) — HTTP/WebSocket server port.
+- `FEEDBACK_HOST` (default: `127.0.0.1`) — Bind address. Listens on localhost only by default.

@@ -32,6 +32,9 @@ interface McpHandlersOptions {
   broadcast: (message: unknown, sessionId?: string) => void;
 }
 
+const DEFAULT_TIMEOUT_SECONDS = 300;
+const IDLE_TIMEOUT_MS = 5000;
+
 export function registerMcpHandlers({ mcpServer, port, sessionId, srcDir, proxy, broadcast }: McpHandlersOptions): void {
 
 mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -563,7 +566,7 @@ The widget only loads in development (localhost) by default.
     }
 
     case "wait_for_browser_feedback": {
-      const timeoutSeconds = (args.timeout_seconds as number) || 300;
+      const timeoutSeconds = (args.timeout_seconds as number) || DEFAULT_TIMEOUT_SECONDS;
 
       if (!isHttpServerOwner()) {
         try {
@@ -842,7 +845,7 @@ The widget only loads in development (localhost) by default.
     }
 
     case "wait_for_multiple_feedback": {
-      const timeoutSeconds = (args.timeout_seconds as number) || 300;
+      const timeoutSeconds = (args.timeout_seconds as number) || DEFAULT_TIMEOUT_SECONDS;
       const message = (args.message as string) || "Submit all your feedback, then click 'Done' when finished.";
 
       // If we don't own the HTTP server, use a simpler polling approach
@@ -871,7 +874,7 @@ The widget only loads in development (localhost) by default.
         const allFeedback: unknown[] = [];
         const startTime = Date.now();
         let lastFeedbackTime = startTime;
-        const idleTimeout = 5000;
+        const idleTimeout = IDLE_TIMEOUT_MS;
 
         while (Date.now() - startTime < timeoutSeconds * 1000) {
           const result = await proxy.fetchReadyFeedback(true) as { feedback?: unknown[] } | null;

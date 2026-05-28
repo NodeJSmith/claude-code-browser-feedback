@@ -1,5 +1,7 @@
 import { detectProjectUrl } from "./utils.ts";
 
+const POLL_INTERVAL_MS = 500;
+
 interface ProxyClientOptions {
   port: number;
   sessionId: string;
@@ -38,7 +40,7 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
   }
 
   async function pollForFeedback(timeoutSeconds: number): Promise<unknown> {
-    const pollInterval = 500;
+    const pollInterval = POLL_INTERVAL_MS;
     const maxAttempts = (timeoutSeconds * 1000) / pollInterval;
 
     for (let i = 0; i < maxAttempts; i++) {

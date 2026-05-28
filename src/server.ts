@@ -25,6 +25,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = parseInt(process.env.FEEDBACK_PORT || "9877");
+const HOST = process.env.FEEDBACK_HOST || "127.0.0.1";
+const SHUTDOWN_TIMEOUT_MS = 2000;
 const PKG_VERSION = JSON.parse(
   fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"),
 ).version;
@@ -84,7 +86,7 @@ function shutdown(reason: string): void {
     setTimeout(() => {
       console.error("[browser-feedback-mcp] Forcing exit after timeout");
       process.exit(0);
-    }, 2000);
+    }, SHUTDOWN_TIMEOUT_MS);
   } else {
     proxy.unregisterSession().finally(() => {
       process.exit(0);
@@ -107,17 +109,17 @@ async function tryListenWithRetry(maxRetries = 3, retryDelay = 1000): Promise<vo
           reject(err);
         };
         httpServer.on("error", onError);
-        httpServer.listen(PORT, () => {
+        httpServer.listen(PORT, HOST, () => {
           httpServer.removeListener("error", onError);
           resolve();
         });
       });
       setHttpServerOwner(true);
       console.error(
-        `[browser-feedback-mcp] HTTP/WebSocket server running on http://localhost:${PORT}`,
+        `[browser-feedback-mcp] HTTP/WebSocket server running on http://${HOST}:${PORT}`,
       );
       console.error(
-        `[browser-feedback-mcp] Widget available at http://localhost:${PORT}/widget.js`,
+        `[browser-feedback-mcp] Widget available at http://${HOST}:${PORT}/widget.js`,
       );
       return;
     } catch (err) {
