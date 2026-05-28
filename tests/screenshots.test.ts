@@ -136,8 +136,13 @@ describe("screenshots", () => {
       expect(result).toBeNull();
     });
 
-    it("returns null for a non-UUID sessionId", () => {
-      const result = screenshots.saveScreenshot("item-1", makeBase64Png(), "not-a-valid-session");
+    it("accepts a non-UUID sessionId that is directory-safe", () => {
+      const result = screenshots.saveScreenshot("item-1", makeBase64Png(), "not-a-uuid-but-safe");
+      expect(result).not.toBeNull();
+    });
+
+    it("returns null for a sessionId with unsafe characters", () => {
+      const result = screenshots.saveScreenshot("item-1", makeBase64Png(), "has spaces");
       expect(result).toBeNull();
     });
   });

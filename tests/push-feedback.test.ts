@@ -140,7 +140,7 @@ describe("createPushFeedback", () => {
     expect(payload[0].image_path).toBe("/tmp/screenshots/session/item-1.png");
   });
 
-  it("omits image_path in content when screenshot save fails", async () => {
+  it("includes screenshot_error when screenshot save fails", async () => {
     vi.mocked(screenshots.saveScreenshot).mockReturnValue(null);
     const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server });
     const item = makeItem({ id: "item-1", screenshot: "data:image/png;base64,baddata" });
@@ -150,6 +150,7 @@ describe("createPushFeedback", () => {
     const call = mockNotification.mock.calls[0][0];
     const payload = JSON.parse(call.params.content);
     expect(payload[0].image_path).toBeUndefined();
+    expect(payload[0].screenshot_error).toBe("failed to save screenshot to disk");
   });
 
   it("puts only session_id and item_count in meta", async () => {

@@ -5,7 +5,7 @@ import { isValidSessionId } from "./utils.ts";
 
 const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024; // 10MB decoded limit
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+const SAFE_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 const MIME_TO_EXT: Record<string, string> = { png: "png", jpeg: "jpg", webp: "webp", gif: "gif", "svg+xml": "svg" };
 
 export function getScreenshotDir(): string {
@@ -13,11 +13,11 @@ export function getScreenshotDir(): string {
 }
 
 export function saveScreenshot(id: string, dataUri: string, sessionId: string): string | null {
-  if (!isValidSessionId(sessionId)) {
+  if (!SAFE_NAME_RE.test(sessionId)) {
     console.error(`[browser-feedback-mcp] saveScreenshot: invalid sessionId`);
     return null;
   }
-  if (!SAFE_ID_RE.test(id)) {
+  if (!SAFE_NAME_RE.test(id)) {
     console.error(`[browser-feedback-mcp] saveScreenshot: invalid id`);
     return null;
   }

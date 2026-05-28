@@ -70,7 +70,8 @@ export function createPushFeedback({ mcpServer }: PushFeedbackOptions): PushFeed
       element_selector: item.element?.selector ?? "",
       url: item.url ?? "",
       timestamp: item.timestamp ?? "",
-      ...(screenshotPaths[i] ? { image_path: screenshotPaths[i] } : {}),
+      ...(screenshotPaths[i] ? { image_path: screenshotPaths[i] } :
+        item.screenshot ? { screenshot_error: "failed to save screenshot to disk" } : {}),
     }));
 
     for (let attempt = 0; attempt < PUSH_MAX_RETRIES; attempt++) {
