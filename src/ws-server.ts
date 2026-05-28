@@ -7,12 +7,9 @@ import {
   persistSession,
   getSessionPending,
   setSessionPending,
-  getSessionReady,
-  setSessionReady,
-  getSessionResolvers,
   getSessionClients,
 } from "./session-store.ts";
-import { broadcastPendingStatus } from "./http-server.ts";
+import type { FeedbackItem, PushResult } from "./server.ts";
 
 interface SessionWebSocket extends WebSocket {
   _sessionId: string;
@@ -21,9 +18,11 @@ interface SessionWebSocket extends WebSocket {
 interface WsServerOptions {
   httpServer: http.Server;
   port: number;
+  pushFeedback: (items: FeedbackItem[], sessionId: string) => Promise<PushResult>;
+  broadcastPendingStatus: (sessionId: string) => void;
 }
 
-export function createWsServer({ httpServer, port }: WsServerOptions) {
+export function createWsServer({ httpServer, port, pushFeedback, broadcastPendingStatus }: WsServerOptions) {
   const wss = new WebSocketServer({ server: httpServer, path: "/ws", clientTracking: true });
 
   wss.on("error", (err: Error) => {
@@ -58,7 +57,7 @@ export function createWsServer({ httpServer, port }: WsServerOptions) {
               reason: "Session ID not recognized. Reload the page to fetch the current widget.",
             }),
           );
-        } catch (_) {
+        } catch {
           /* ignore */
         }
         ws.close(4001, "session_invalid");
@@ -102,7 +101,7 @@ export function createWsServer({ httpServer, port }: WsServerOptions) {
     const status = getPendingSummary(getSessionPending(sessionId));
     ws.send(JSON.stringify({ type: "pending_status", ...status }));
 
-    ws.on("message", (data) => {
+    ws.on("message", async (data) => {
       try {
         const message = JSON.parse(data.toString()) as Record<string, unknown>;
         const sid = ws._sessionId;
@@ -124,29 +123,27 @@ export function createWsServer({ httpServer, port }: WsServerOptions) {
         }
 
         if (message.type === "send_to_claude") {
-          const pending = getSessionPending(sid);
-          const ready = getSessionReady(sid);
-          ready.push(...pending);
-          setSessionPending(sid, []);
-          broadcastPendingStatus(sid);
+          const items = [...getSessionPending(sid)] as FeedbackItem[];
+          if (items.length === 0) {
+            ws.send(JSON.stringify({ type: "sent_to_claude", count: 0 }));
+          } else {
+            // Dequeue before push to prevent duplicate delivery from concurrent handlers
+            const sentIds = new Set(items.map((i) => i.id));
+            setSessionPending(
+              sid,
+              getSessionPending(sid).filter((f) => !sentIds.has((f as FeedbackItem).id)),
+            );
+            broadcastPendingStatus(sid);
 
-          const count = ready.length;
-
-          const resolvers = getSessionResolvers(sid);
-          if (resolvers.length > 0) {
-            while (resolvers.length > 0) {
-              const resolver = resolvers.shift()!;
-              resolver([...ready]);
+            const result = await pushFeedback(items, sid);
+            if (result.ok) {
+              ws.send(JSON.stringify({ type: "sent_to_claude", count: items.length }));
+            } else {
+              setSessionPending(sid, [...items, ...getSessionPending(sid)]);
+              broadcastPendingStatus(sid);
+              ws.send(JSON.stringify({ type: "push_failed", reason: result.reason }));
             }
-            setSessionReady(sid, []);
           }
-
-          ws.send(
-            JSON.stringify({
-              type: "sent_to_claude",
-              count,
-            }),
-          );
         }
 
         if (message.type === "delete_feedback") {

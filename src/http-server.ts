@@ -10,22 +10,35 @@ import {
   connectedClients,
   getSessionPending,
   setSessionPending,
-  getSessionReady,
-  setSessionReady,
   getSessionClients,
-  findOrphanBuckets,
-  migrateOrphanInto,
   persistSession,
   deleteSession,
 } from "./session-store.ts";
+import type { FeedbackItem, PushResult } from "./server.ts";
+
+const MAX_BODY_BYTES = 16 * 1024 * 1024; // 16MB — headroom for MAX_SCREENSHOT_BYTES (10MB) + base64 expansion
 
 function parseJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let body = "";
+    let bytesReceived = 0;
+    let tooLarge = false;
+    req.on("error", reject);
     req.on("data", (chunk: Buffer) => {
+      bytesReceived += chunk.length;
+      if (bytesReceived > MAX_BODY_BYTES) {
+        tooLarge = true;
+        return; // drain without accumulating
+      }
       body += chunk;
     });
     req.on("end", () => {
+      if (tooLarge) {
+        const err = new Error("Payload too large") as NodeJS.ErrnoException;
+        err.code = "PAYLOAD_TOO_LARGE";
+        reject(err);
+        return;
+      }
       try {
         resolve(JSON.parse(body));
       } catch (err) {
@@ -35,7 +48,7 @@ function parseJsonBody(req: http.IncomingMessage): Promise<Record<string, unknow
   });
 }
 
-export function broadcastPendingStatus(sessionId: string): void {
+function broadcastPendingStatus(sessionId: string): void {
   const status = getPendingSummary(getSessionPending(sessionId));
   const message = JSON.stringify({ type: "pending_status", ...status });
   for (const client of getSessionClients(sessionId)) {
@@ -49,9 +62,10 @@ interface HttpServerOptions {
   port: number;
   pkgVersion: string;
   srcDir: string;
+  pushFeedback: (items: FeedbackItem[], sessionId: string) => Promise<PushResult>;
 }
 
-export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions) {
+export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: HttpServerOptions) {
   const httpServer = http.createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
@@ -126,84 +140,26 @@ export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions
         connectedClients: sessionId ? getSessionClients(sessionId).size : connectedClients.size,
         pendingFeedback: sessionId ? getSessionPending(sessionId).length : 0,
         sessions: sessionRegistry.size,
-        orphanSessions: findOrphanBuckets(),
       };
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(response));
       return;
     }
 
-    if (urlObj.pathname === "/feedback" && req.method === "GET") {
-      const shouldClear = urlObj.searchParams.get("clear") !== "false";
-      const sessionId = urlObj.searchParams.get("session") || "unmatched";
-      const sessionReady = getSessionReady(sessionId);
-      let feedback = [...sessionReady];
-      if (shouldClear) {
-        setSessionReady(sessionId, []);
-      }
-      let orphans = findOrphanBuckets();
-      if (feedback.length === 0 && isValidSessionId(sessionId) && sessionRegistry.has(sessionId)) {
-        if (orphans.length > 0 && sessionRegistry.size === 1) {
-          for (const o of orphans) {
-            console.error(
-              `[browser-feedback-mcp] /feedback rescuing orphan ${o.sessionId} into ${sessionId}`,
-            );
-            migrateOrphanInto(sessionId, o.sessionId);
-          }
-          const rescuedReady = getSessionReady(sessionId);
-          const rescuedPending = getSessionPending(sessionId);
-          feedback = [...rescuedReady, ...rescuedPending];
-          if (shouldClear) {
-            setSessionReady(sessionId, []);
-            setSessionPending(sessionId, []);
-          }
-          orphans = [];
-        }
-      } else {
-        orphans = [];
-      }
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ feedback, orphans }));
-      return;
-    }
-
-    if (urlObj.pathname === "/pending-summary" && req.method === "GET") {
-      const sessionId = urlObj.searchParams.get("session") || "unmatched";
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(getPendingSummary(getSessionPending(sessionId))));
-      return;
-    }
-
-    const deleteMatch = urlObj.pathname.match(/^\/feedback\/([^/]+)$/);
-    if (deleteMatch && req.method === "DELETE") {
-      const idToDelete = deleteMatch[1];
-      const sessionId = urlObj.searchParams.get("session") || "unmatched";
-      const pending = getSessionPending(sessionId) as { id?: string }[];
-      const initialLength = pending.length;
-      setSessionPending(
-        sessionId,
-        pending.filter((f) => f.id !== idToDelete),
-      );
-      const deleted = getSessionPending(sessionId).length < initialLength;
-
-      if (deleted) {
-        broadcastPendingStatus(sessionId);
-      }
-
-      res.writeHead(deleted ? 200 : 404, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          success: deleted,
-          message: deleted ? "Feedback deleted" : "Feedback not found",
-        }),
-      );
-      return;
-    }
-
     if (urlObj.pathname === "/broadcast" && req.method === "POST") {
-      const sessionId = urlObj.searchParams.get("session") || "unmatched";
       parseJsonBody(req)
-        .then((message) => {
+        .then((body) => {
+          const sessionId = (body.sessionId as string) || urlObj.searchParams.get("session") || "unmatched";
+          const processId = body.processId as string | undefined;
+          const registered = sessionRegistry.get(sessionId);
+          if (registered && registered.processId) {
+            if (!processId || registered.processId !== processId) {
+              res.writeHead(403, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Unauthorized: processId does not match" }));
+              return;
+            }
+          }
+          const message = body.message ?? body;
           const data = JSON.stringify(message);
           let sentCount = 0;
           for (const client of getSessionClients(sessionId)) {
@@ -215,7 +171,45 @@ export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: true, clientCount: sentCount }));
         })
-        .catch(() => {
+        .catch((err: NodeJS.ErrnoException) => {
+          if (err.code === "PAYLOAD_TOO_LARGE") {
+            res.writeHead(413, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Payload too large" }));
+            return;
+          }
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Invalid JSON" }));
+        });
+      return;
+    }
+
+    if (urlObj.pathname === "/push-notification" && req.method === "POST") {
+      parseJsonBody(req)
+        .then(async (data) => {
+          const sessionId = data.sessionId as string;
+          const processId = data.processId as string;
+          if (!sessionId || !processId || !isValidSessionId(sessionId)) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "sessionId and processId required" }));
+            return;
+          }
+          const registered = sessionRegistry.get(sessionId);
+          if (!registered || !registered.processId || registered.processId !== processId) {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Unauthorized: processId does not match registered session" }));
+            return;
+          }
+          const items = data.items as FeedbackItem[];
+          const result = await pushFeedback(items, sessionId);
+          res.writeHead(result.ok ? 200 : 502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        })
+        .catch((err: NodeJS.ErrnoException) => {
+          if (err.code === "PAYLOAD_TOO_LARGE") {
+            res.writeHead(413, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Payload too large" }));
+            return;
+          }
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Invalid JSON" }));
         });
@@ -243,10 +237,6 @@ export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions
               if (oldPending.length > 0) {
                 getSessionPending(data.sessionId as string).push(...oldPending);
               }
-              const oldReady = getSessionReady(existingId);
-              if (oldReady.length > 0) {
-                getSessionReady(data.sessionId as string).push(...oldReady);
-              }
               const oldClients = getSessionClients(existingId);
               if (oldClients.size > 0) {
                 const newClients = getSessionClients(data.sessionId as string);
@@ -264,9 +254,22 @@ export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions
               );
             }
           }
+          const existing = sessionRegistry.get(data.sessionId as string);
+          if (existing && existing.processId) {
+            if (data.processId && existing.processId !== data.processId) {
+              res.writeHead(409, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Session already registered by another process" }));
+              return;
+            }
+            if (!data.processId) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "processId required for already-owned session" }));
+              return;
+            }
+          }
           sessionRegistry.set(data.sessionId as string, {
             sessionId: data.sessionId as string,
-            processId: (data.processId as string) || null,
+            processId: (data.processId as string) || (existing?.processId ?? null),
             projectDir: data.projectDir as string,
             projectUrl: (data.projectUrl as string) || null,
             detectedFrom: (data.detectedFrom as string) || null,
@@ -324,5 +327,5 @@ export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions
     res.end("Not found");
   });
 
-  return { httpServer };
+  return { httpServer, broadcastPendingStatus };
 }

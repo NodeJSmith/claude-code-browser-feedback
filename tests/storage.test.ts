@@ -27,52 +27,50 @@ describe("storage", () => {
     storage.remove(sid);
   });
 
-  it("returns empty arrays for an unknown session", () => {
+  it("returns empty object for an unknown session", () => {
     const data = storage.load(sid);
-    expect(data).toEqual({ pending: [], ready: [] });
+    expect(data).toEqual({ pending: [] });
   });
 
-  it("persists pending and ready arrays across load", async () => {
+  it("persists pending array across load", async () => {
     storage.save(sid, {
       pending: [{ id: "p1", description: "first" }],
-      ready: [{ id: "r1", description: "ready item" }],
     });
     await flushDelay();
     const loaded = storage.load(sid);
     expect(loaded.pending).toEqual([{ id: "p1", description: "first" }]);
-    expect(loaded.ready).toEqual([{ id: "r1", description: "ready item" }]);
   });
 
   it("coalesces rapid saves via debounce", async () => {
-    storage.save(sid, { pending: [{ id: "a" }], ready: [] });
-    storage.save(sid, { pending: [{ id: "a" }, { id: "b" }], ready: [] });
-    storage.save(sid, { pending: [{ id: "a" }, { id: "b" }, { id: "c" }], ready: [] });
+    storage.save(sid, { pending: [{ id: "a" }] });
+    storage.save(sid, { pending: [{ id: "a" }, { id: "b" }] });
+    storage.save(sid, { pending: [{ id: "a" }, { id: "b" }, { id: "c" }] });
     await flushDelay();
     const loaded = storage.load(sid);
     expect(loaded.pending.map((i) => i.id)).toEqual(["a", "b", "c"]);
   });
 
   it("flush forces an immediate write", () => {
-    storage.save(sid, { pending: [{ id: "sync" }], ready: [] });
+    storage.save(sid, { pending: [{ id: "sync" }] });
     storage.flush(sid);
     const loaded = storage.load(sid);
     expect(loaded.pending).toEqual([{ id: "sync" }]);
   });
 
   it("remove deletes the file", async () => {
-    storage.save(sid, { pending: [{ id: "x" }], ready: [] });
+    storage.save(sid, { pending: [{ id: "x" }] });
     await flushDelay();
     storage.remove(sid);
     const loaded = storage.load(sid);
-    expect(loaded).toEqual({ pending: [], ready: [] });
+    expect(loaded).toEqual({ pending: [] });
   });
 
   it("listSessions enumerates persisted sessions", async () => {
     const sidA = makeSessionId("a");
     const sidB = makeSessionId("b");
     try {
-      storage.save(sidA, { pending: [{ id: "pa" }], ready: [] });
-      storage.save(sidB, { pending: [], ready: [{ id: "rb" }] });
+      storage.save(sidA, { pending: [{ id: "pa" }] });
+      storage.save(sidB, { pending: [{ id: "pb" }] });
       await flushDelay();
       const list = storage.listSessions();
       expect(list).toEqual(expect.arrayContaining([sidA, sidB]));
@@ -83,8 +81,27 @@ describe("storage", () => {
   });
 
   it("rejects writes for malformed session IDs", () => {
-    storage.save("not-a-uuid", { pending: [{ id: "x" }], ready: [] });
+    storage.save("not-a-uuid", { pending: [{ id: "x" }] });
     storage.flush("not-a-uuid");
     expect(fs.existsSync(path.join(storage.getStorageDir(), "not-a-uuid.json"))).toBe(false);
+  });
+
+  it("ignores legacy ready field when loading old files", async () => {
+    // Write a legacy file with a ready field directly to disk
+    const storageDir = storage.getStorageDir();
+    fs.mkdirSync(storageDir, { recursive: true });
+    const legacyFile = path.join(storageDir, `${sid}.json`);
+    fs.writeFileSync(
+      legacyFile,
+      JSON.stringify({
+        pending: [{ id: "p1" }],
+        ready: [{ id: "r1" }],
+        updatedAt: new Date().toISOString(),
+      }),
+      { encoding: "utf8" },
+    );
+    const loaded = storage.load(sid);
+    expect(loaded.pending).toEqual([{ id: "p1" }]);
+    expect((loaded as Record<string, unknown>).ready).toBeUndefined();
   });
 });

@@ -43,8 +43,6 @@ afterAll(() => {
   }
 });
 
-// HTTP Basics
-
 describe("HTTP basics", () => {
   it("GET /status returns 200 with expected shape", async () => {
     const resp = await fetch(`${BASE_URL}/status`);
@@ -62,8 +60,6 @@ describe("HTTP basics", () => {
     expect(resp.status).toBe(404);
   });
 });
-
-// Session Registration Lifecycle
 
 describe("session registration", () => {
   const testSessionId = crypto.randomUUID();
@@ -121,6 +117,39 @@ describe("session registration", () => {
     expect(found).toBeUndefined();
   });
 
+  it("POST /register-session rejects re-registration with different processId", async () => {
+    const sessionId = crypto.randomUUID();
+
+    // Register with processId 'proc-1'
+    await fetch(`${BASE_URL}/register-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, processId: "proc-1", projectDir: "/tmp/guard-test" }),
+    });
+
+    // Re-register with processId 'proc-2' — should be rejected
+    const reregResp = await fetch(`${BASE_URL}/register-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, processId: "proc-2", projectDir: "/tmp/guard-test" }),
+    });
+    expect(reregResp.status).toBe(409);
+
+    // Session still belongs to proc-1
+    const sessionsResp = await fetch(`${BASE_URL}/sessions`);
+    const sessionsData = await sessionsResp.json();
+    const found = sessionsData.sessions.find((s: Record<string, unknown>) => s.sessionId === sessionId);
+    expect(found).toBeDefined();
+    expect(found.processId).toBe("proc-1");
+
+    // Clean up
+    await fetch(`${BASE_URL}/unregister-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, processId: "proc-1" }),
+    });
+  });
+
   it("POST /unregister-session skips deletion when processId does not match", async () => {
     const sessionId = crypto.randomUUID();
 
@@ -131,18 +160,11 @@ describe("session registration", () => {
       body: JSON.stringify({ sessionId, processId: "proc-1", projectDir: "/tmp/guard-test" }),
     });
 
-    // Re-register with processId 'proc-2' (simulates new process taking over)
-    await fetch(`${BASE_URL}/register-session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, processId: "proc-2", projectDir: "/tmp/guard-test" }),
-    });
-
-    // Old process tries to unregister with 'proc-1' — should be skipped
+    // Try to unregister with 'proc-2' — should be skipped
     const unregResp = await fetch(`${BASE_URL}/unregister-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, processId: "proc-1" }),
+      body: JSON.stringify({ sessionId, processId: "proc-2" }),
     });
     expect(unregResp.status).toBe(200);
     const unregData = await unregResp.json();
@@ -151,14 +173,14 @@ describe("session registration", () => {
     // Session should still exist
     const sessionsResp = await fetch(`${BASE_URL}/sessions`);
     const sessionsData = await sessionsResp.json();
-    const found = sessionsData.sessions.find((s) => s.sessionId === sessionId);
+    const found = sessionsData.sessions.find((s: Record<string, unknown>) => s.sessionId === sessionId);
     expect(found).toBeDefined();
 
     // Clean up with correct processId
     await fetch(`${BASE_URL}/unregister-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, processId: "proc-2" }),
+      body: JSON.stringify({ sessionId, processId: "proc-1" }),
     });
   });
 
@@ -172,8 +194,6 @@ describe("session registration", () => {
   });
 });
 
-// Session-Scoped Data Isolation
-
 describe("session-scoped data isolation", () => {
   it("GET /status?session=<id> returns zero counts for unknown session", async () => {
     const unknownId = crypto.randomUUID();
@@ -183,27 +203,7 @@ describe("session-scoped data isolation", () => {
     expect(data.connectedClients).toBe(0);
     expect(data.pendingFeedback).toBe(0);
   });
-
-  it("GET /feedback?session=<id> returns empty for unknown session", async () => {
-    const unknownId = crypto.randomUUID();
-    const resp = await fetch(`${BASE_URL}/feedback?session=${unknownId}`);
-    expect(resp.status).toBe(200);
-    const data = await resp.json();
-    expect(data.feedback).toEqual([]);
-  });
-
-  it("DELETE /feedback/<id>?session=<id> returns 404 for non-existent item", async () => {
-    const unknownId = crypto.randomUUID();
-    const resp = await fetch(`${BASE_URL}/feedback/nonexistent?session=${unknownId}`, {
-      method: "DELETE",
-    });
-    expect(resp.status).toBe(404);
-    const data = await resp.json();
-    expect(data.success).toBe(false);
-  });
 });
-
-// Broadcast Endpoint
 
 describe("broadcast endpoint", () => {
   it("POST /broadcast with valid JSON returns 200", async () => {
@@ -227,8 +227,6 @@ describe("broadcast endpoint", () => {
     expect(resp.status).toBe(400);
   });
 });
-
-// WebSocket Session Routing
 
 function connectWs(sessionId: string | null): Promise<{ ws: WebSocket; msg: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
@@ -439,18 +437,121 @@ describe("WebSocket session routing", () => {
   });
 });
 
-// Orphan bucket reporting (Layer 4 of #46)
-
-describe("orphan bucket reporting", () => {
-  it("GET /status exposes orphanSessions field", async () => {
-    const resp = await fetch(`${BASE_URL}/status`);
+describe("POST /push-notification", () => {
+  it("returns 400 when sessionId is missing", async () => {
+    const resp = await fetch(`${BASE_URL}/push-notification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ processId: "proc-abc", items: [] }),
+    });
+    expect(resp.status).toBe(400);
     const data = await resp.json();
-    expect(Array.isArray(data.orphanSessions)).toBe(true);
+    expect(data.error).toMatch(/sessionId/);
   });
 
-  it("GET /feedback exposes orphans field", async () => {
-    const resp = await fetch(`${BASE_URL}/feedback?session=${crypto.randomUUID()}`);
+  it("returns 400 when processId is missing", async () => {
+    const sessionId = crypto.randomUUID();
+    const resp = await fetch(`${BASE_URL}/push-notification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, items: [] }),
+    });
+    expect(resp.status).toBe(400);
     const data = await resp.json();
-    expect(Array.isArray(data.orphans)).toBe(true);
+    expect(data.error).toMatch(/processId/);
+  });
+
+  it("returns 403 when processId does not match registered session", async () => {
+    const sessionId = crypto.randomUUID();
+    const correctProcessId = `proc-${sessionId.slice(0, 8)}`;
+    const wrongProcessId = "proc-wrong";
+
+    await registerSession(sessionId, { processId: correctProcessId });
+
+    try {
+      const resp = await fetch(`${BASE_URL}/push-notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, processId: wrongProcessId, items: [] }),
+      });
+      expect(resp.status).toBe(403);
+      const data = await resp.json();
+      expect(data.error).toMatch(/[Uu]nauthorized/);
+    } finally {
+      await unregisterSession(sessionId, correctProcessId);
+    }
+  });
+
+  it("returns 403 when session is not registered at all", async () => {
+    const sessionId = crypto.randomUUID();
+    const resp = await fetch(`${BASE_URL}/push-notification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, processId: "any-proc", items: [] }),
+    });
+    expect(resp.status).toBe(403);
+    const data = await resp.json();
+    expect(data.error).toMatch(/[Uu]nauthorized/);
+  });
+
+  it("returns 200 with ok:true when processId matches and push succeeds", async () => {
+    const sessionId = crypto.randomUUID();
+    const processId = `proc-${sessionId.slice(0, 8)}`;
+
+    await registerSession(sessionId, { processId });
+
+    try {
+      const resp = await fetch(`${BASE_URL}/push-notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          processId,
+          items: [
+            {
+              id: "item-1",
+              description: "Test feedback",
+              consoleLogs: [],
+              element: null,
+              url: "http://localhost:3000",
+              timestamp: new Date().toISOString(),
+              screenshot: null,
+            },
+          ],
+        }),
+      });
+      expect(resp.status).toBe(200);
+      const data = await resp.json();
+      expect(data.ok).toBe(true);
+    } finally {
+      await unregisterSession(sessionId, processId);
+    }
+  });
+
+  it("returns 400 for invalid JSON body", async () => {
+    const resp = await fetch(`${BASE_URL}/push-notification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not valid json",
+    });
+    expect(resp.status).toBe(400);
+    const data = await resp.json();
+    expect(data.error).toBe("Invalid JSON");
   });
 });
+
+describe("parseJsonBody size limit", () => {
+  it("returns 413 when body exceeds 16MB", async () => {
+    // Generate a body that is just over 16MB
+    const big = "x".repeat(16 * 1024 * 1024 + 1);
+    const body = JSON.stringify({ data: big });
+
+    const resp = await fetch(`${BASE_URL}/broadcast?session=unmatched`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    expect(resp.status).toBe(413);
+  });
+});
+

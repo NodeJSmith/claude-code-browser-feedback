@@ -5,11 +5,13 @@ import {
   isConnected,
   ws,
   pendingItems,
+  localPendingItems,
   getEl,
   setWs,
   setIsConnected,
   setCurrentSessionId,
   setPendingItems,
+  setLocalPendingItems,
   setWsReconnectTimeout,
   _wsReconnectTimeout,
 } from "./widget-state.ts";
@@ -64,6 +66,17 @@ export function connectWebSocket(): void {
       setIsConnected(true);
       updateButtonState();
       console.log("[Claude Feedback] Connected to feedback server");
+      if (localPendingItems.length > 0) {
+        const unsent: typeof localPendingItems = [];
+        for (const item of localPendingItems) {
+          try {
+            socket.send(JSON.stringify({ type: "feedback", payload: item }));
+          } catch {
+            unsent.push(item);
+          }
+        }
+        setLocalPendingItems(unsent);
+      }
     };
 
     socket.onclose = () => {
@@ -127,15 +140,12 @@ function handleServerMessage(message: Record<string, unknown>): void {
   } else if (message.type === "request_annotation") {
     handlers?.onNotification((message.message as string) || "Claude is requesting your feedback");
     handlers?.onAnnotationRequest((message.message as string) || "");
-  } else if (message.type === "request_multiple_annotations") {
-    handlers?.onNotification(
-      (message.message as string) || "Claude is requesting multiple annotations",
-    );
-    handlers?.onAnnotationRequest((message.message as string) || "");
   } else if (message.type === "feedback_received") {
     handlers?.onItemAdded();
   } else if (message.type === "sent_to_claude") {
     handlers?.onBatchSent(message.count as number);
+  } else if (message.type === "push_failed") {
+    handlers?.onError((message.reason as string) || "Failed to send feedback to Claude");
   }
 }
 

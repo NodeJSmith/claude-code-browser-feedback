@@ -23,20 +23,18 @@ export function getStorageDir(): string {
 
 interface StorageState {
   pending: unknown[];
-  ready: unknown[];
 }
 
 export function load(sessionId: string): StorageState {
-  if (!isValidSessionId(sessionId)) return { pending: [], ready: [] };
+  if (!isValidSessionId(sessionId)) return { pending: [] };
   try {
     const raw = fs.readFileSync(fileFor(sessionId), "utf8");
     const data = JSON.parse(raw);
     return {
       pending: Array.isArray(data.pending) ? data.pending : [],
-      ready: Array.isArray(data.ready) ? data.ready : [],
     };
   } catch {
-    return { pending: [], ready: [] };
+    return { pending: [] };
   }
 }
 
@@ -53,7 +51,6 @@ export function save(sessionId: string, state: StorageState): void {
   const entry = pendingWrites.get(sessionId) || {};
   entry.state = {
     pending: Array.isArray(state.pending) ? state.pending : [],
-    ready: Array.isArray(state.ready) ? state.ready : [],
     updatedAt: new Date().toISOString(),
   };
   if (entry.timer) clearTimeout(entry.timer);
