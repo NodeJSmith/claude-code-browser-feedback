@@ -281,12 +281,6 @@ describe("message dispatch via connectWebSocket", () => {
     expect(handlers.onNotification).toHaveBeenCalled();
   });
 
-  it("calls onAnnotationRequest on 'request_multiple_annotations'", () => {
-    dispatch(socket, { type: "request_multiple_annotations", message: "Multiple needed" });
-    expect(handlers.onAnnotationRequest).toHaveBeenCalledWith("Multiple needed");
-    expect(handlers.onNotification).toHaveBeenCalled();
-  });
-
   it("calls onItemAdded on 'feedback_received'", () => {
     dispatch(socket, { type: "feedback_received" });
     expect(handlers.onItemAdded).toHaveBeenCalled();

@@ -139,11 +139,6 @@ function handleServerMessage(message: Record<string, unknown>): void {
   } else if (message.type === "request_annotation") {
     handlers?.onNotification((message.message as string) || "Claude is requesting your feedback");
     handlers?.onAnnotationRequest((message.message as string) || "");
-  } else if (message.type === "request_multiple_annotations") {
-    handlers?.onNotification(
-      (message.message as string) || "Claude is requesting multiple annotations",
-    );
-    handlers?.onAnnotationRequest((message.message as string) || "");
   } else if (message.type === "feedback_received") {
     handlers?.onItemAdded();
   } else if (message.type === "sent_to_claude") {

@@ -13,17 +13,17 @@ export function getScreenshotDir(): string {
 
 export function saveScreenshot(id: string, dataUri: string, sessionId: string): string | null {
   if (!isValidSessionId(sessionId)) {
-    console.warn(`[browser-feedback-mcp] saveScreenshot: invalid sessionId`);
+    console.error(`[browser-feedback-mcp] saveScreenshot: invalid sessionId`);
     return null;
   }
   if (!SAFE_ID_RE.test(id)) {
-    console.warn(`[browser-feedback-mcp] saveScreenshot: invalid id`);
+    console.error(`[browser-feedback-mcp] saveScreenshot: invalid id`);
     return null;
   }
 
   const match = dataUri.match(/^data:image\/[^;]+;base64,(.+)$/);
   if (!match) {
-    console.warn(`[browser-feedback-mcp] saveScreenshot: invalid data URI for item ${id}`);
+    console.error(`[browser-feedback-mcp] saveScreenshot: invalid data URI for item ${id}`);
     return null;
   }
 
@@ -35,16 +35,16 @@ export function saveScreenshot(id: string, dataUri: string, sessionId: string): 
     // Verify it decoded correctly — if the base64 was malformed, the buffer will be
     // much smaller than expected or re-encoding won't round-trip
     if (buf.toString("base64").replace(/=+$/, "") !== base64Data.replace(/=+$/, "")) {
-      console.warn(`[browser-feedback-mcp] saveScreenshot: malformed base64 for item ${id}`);
+      console.error(`[browser-feedback-mcp] saveScreenshot: malformed base64 for item ${id}`);
       return null;
     }
   } catch (err) {
-    console.warn(`[browser-feedback-mcp] saveScreenshot: base64 decode failed for item ${id}: ${(err as Error).message}`);
+    console.error(`[browser-feedback-mcp] saveScreenshot: base64 decode failed for item ${id}: ${(err as Error).message}`);
     return null;
   }
 
   if (buf.length > MAX_SCREENSHOT_BYTES) {
-    console.warn(
+    console.error(
       `[browser-feedback-mcp] saveScreenshot: decoded data exceeds 10MB limit for item ${id} (${buf.length} bytes)`
     );
     return null;
@@ -61,7 +61,7 @@ export function saveScreenshot(id: string, dataUri: string, sessionId: string): 
     fs.renameSync(tmp, target);
     return target;
   } catch (err) {
-    console.warn(
+    console.error(
       `[browser-feedback-mcp] saveScreenshot: write failed for item ${id}: ${(err as Error).message}`
     );
     // Clean up temp file if it exists
@@ -115,7 +115,7 @@ export function sweepOrphanScreenshots(activeSessions: string[]): void {
     if (isOrphan || isStale) {
       try {
         fs.rmSync(dirPath, { recursive: true, force: true });
-        console.log(`[browser-feedback-mcp] sweepOrphanScreenshots: removed ${dirPath}`);
+        console.error(`[browser-feedback-mcp] sweepOrphanScreenshots: removed ${dirPath}`);
       } catch (err) {
         /* silently ignore individual directory errors */
       }
