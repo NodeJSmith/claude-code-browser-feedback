@@ -3,7 +3,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { WebSocketServer, WebSocket } from "ws";
 import fs from "fs";
 import path from "path";
 import crypto from "node:crypto";
@@ -21,7 +20,6 @@ import {
   connectedClients,
   isHttpServerOwner,
   setHttpServerOwner,
-  persistSession,
   getSessionPending,
   setSessionPending,
   getSessionReady,
@@ -33,6 +31,7 @@ import {
 } from "./session-store.js";
 import { createProxyClient } from "./proxy-client.js";
 import { createHttpServer, broadcastPendingStatus } from "./http-server.js";
+import { createWsServer } from "./ws-server.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,203 +50,7 @@ const proxy = createProxyClient({ port: PORT, sessionId: SESSION_ID, processId: 
 
 const { httpServer } = createHttpServer({ port: PORT, pkgVersion: PKG_VERSION, srcDir: __dirname });
 
-// ============================================
-// WebSocket Server - real-time communication
-// ============================================
-
-const wss = new WebSocketServer({ server: httpServer, path: "/ws", clientTracking: true });
-
-// Handle WebSocket server errors
-wss.on("error", (err) => {
-  console.error("[browser-feedback-mcp] WebSocket server error:", err.message);
-});
-
-wss.on("connection", (ws, req) => {
-  // Extract session ID from WebSocket URL query params
-  const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
-  const rawSession = reqUrl.searchParams.get("session");
-  let sessionId = rawSession || "unmatched";
-  let rebindReason = null;
-
-  // If the client connected with a session ID we don't know about (stale
-  // cached widget, pre-deterministic-ID bundle, etc.), try to recover.
-  if (rawSession && !sessionRegistry.has(rawSession)) {
-    const registered = Array.from(sessionRegistry.keys());
-    if (registered.length === 1) {
-      // Exactly one registered session — safe to rebind. With deterministic
-      // session IDs there can only be one MCP session per projectDir, so this
-      // is the right session by construction.
-      const target = registered[0];
-      console.error(
-        `[browser-feedback-mcp] Rebinding WS client from unknown session ${rawSession} -> ${target}`,
-      );
-      rebindReason = { from: rawSession, to: target };
-      sessionId = target;
-    } else if (registered.length > 1) {
-      // Ambiguous — don't guess. Tell the widget so it can refresh.
-      console.error(
-        `[browser-feedback-mcp] WS client connected with unknown session ${rawSession}; ${registered.length} sessions registered. Sending session_invalid.`,
-      );
-      try {
-        ws.send(
-          JSON.stringify({
-            type: "session_invalid",
-            providedSession: rawSession,
-            knownSessions: registered,
-            reason: "Session ID not recognized. Reload the page to fetch the current widget.",
-          }),
-        );
-      } catch (_) {
-        /* ignore */
-      }
-      // 4001: application close code, "session unknown to server" (RFC 6455 §7.4.2).
-      ws.close(4001, "session_invalid");
-      return;
-    }
-    // If no sessions are registered yet, leave sessionId as the raw value;
-    // it may match once an MCP session boots.
-  }
-  ws._sessionId = sessionId;
-
-  if (!rawSession) {
-    console.error(
-      `[browser-feedback-mcp] WARNING: WebSocket connection without session param. Client placed in 'unmatched' bucket.`,
-    );
-  }
-
-  connectedClients.add(ws);
-  const sessionClients = getSessionClients(sessionId);
-  const existingCount = sessionClients.size;
-  sessionClients.add(ws);
-  console.error(
-    `[browser-feedback-mcp] Client connected (session: ${sessionId}). Total: ${connectedClients.size}`,
-  );
-
-  // Send connection confirmation with session info and warnings
-  const connectionMsg = {
-    type: "connected",
-    message: "Connected to Claude Code feedback server",
-    sessionId,
-    sessionClientCount: existingCount + 1,
-  };
-  if (!rawSession) {
-    connectionMsg.sessionWarning =
-      "No session ID provided. This connection is not linked to any Claude Code session.";
-  }
-  if (rebindReason) {
-    connectionMsg.rebound = rebindReason;
-  }
-  if (existingCount > 0) {
-    connectionMsg.duplicateWarning = `This session already has ${existingCount} other connected client(s). The same site may be open in another tab.`;
-  }
-  ws.send(JSON.stringify(connectionMsg));
-
-  // Send current pending status for this session to newly connected client
-  const status = getPendingSummary(getSessionPending(sessionId));
-  ws.send(JSON.stringify({ type: "pending_status", ...status }));
-
-  ws.on("message", (data) => {
-    try {
-      const message = JSON.parse(data.toString());
-      const sid = ws._sessionId;
-
-      if (message.type === "feedback") {
-        console.error(`[browser-feedback-mcp] Received feedback from browser (session: ${sid})`);
-
-        const feedback = {
-          ...message.payload,
-          receivedAt: new Date().toISOString(),
-        };
-
-        getSessionPending(sid).push(feedback);
-        persistSession(sid);
-
-        // Acknowledge receipt
-        ws.send(JSON.stringify({ type: "feedback_received", id: feedback.id }));
-
-        // Broadcast updated pending status to this session's clients
-        broadcastPendingStatus(sid);
-      }
-
-      if (message.type === "send_to_claude") {
-        const pending = getSessionPending(sid);
-        const ready = getSessionReady(sid);
-        // Move all pending items to ready. setSessionPending below persists
-        // both maps, so the in-place ready.push is captured in the same write.
-        ready.push(...pending);
-        setSessionPending(sid, []);
-        broadcastPendingStatus(sid);
-
-        const count = ready.length;
-
-        // Resolve any waiting promises for this session with the batch
-        const resolvers = getSessionResolvers(sid);
-        if (resolvers.length > 0) {
-          while (resolvers.length > 0) {
-            const resolver = resolvers.shift();
-            resolver([...ready]);
-          }
-          // Clear after resolvers consumed, so get_pending_feedback won't double-deliver
-          setSessionReady(sid, []);
-        }
-
-        // Acknowledge to browser
-        ws.send(
-          JSON.stringify({
-            type: "sent_to_claude",
-            count: count,
-          }),
-        );
-      }
-
-      if (message.type === "delete_feedback") {
-        const idToDelete = message.id;
-        const pending = getSessionPending(sid);
-        const initialLength = pending.length;
-        setSessionPending(
-          sid,
-          pending.filter((f) => f.id !== idToDelete),
-        );
-        const deleted = getSessionPending(sid).length < initialLength;
-
-        if (deleted) {
-          console.error(`[browser-feedback-mcp] Deleted feedback: ${idToDelete} (session: ${sid})`);
-          // Broadcast updated pending status to this session's clients
-          broadcastPendingStatus(sid);
-        }
-
-        ws.send(
-          JSON.stringify({
-            type: "feedback_deleted",
-            id: idToDelete,
-            success: deleted,
-          }),
-        );
-      }
-    } catch (err) {
-      console.error("[browser-feedback-mcp] Error parsing message:", err);
-    }
-  });
-
-  ws.on("close", () => {
-    connectedClients.delete(ws);
-    getSessionClients(ws._sessionId).delete(ws);
-    console.error(
-      `[browser-feedback-mcp] Client disconnected (session: ${ws._sessionId}). Total: ${connectedClients.size}`,
-    );
-  });
-});
-
-// Broadcast to session-specific connected clients
-function broadcast(message, sessionId) {
-  const data = JSON.stringify(message);
-  const clients = sessionId ? getSessionClients(sessionId) : connectedClients;
-  for (const client of clients) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(data);
-    }
-  }
-}
+const { wss, broadcast } = createWsServer({ httpServer, port: PORT });
 
 // ============================================
 // MCP Server - interface for Claude Code
