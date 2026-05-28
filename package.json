@@ -9,7 +9,10 @@
   },
   "scripts": {
     "typecheck": "tsc",
+    "build:widget": "esbuild src/widget/widget.ts --bundle --format=iife --outfile=dist/widget.js",
     "start": "node --experimental-strip-types src/server.ts",
+    "prestart": "npm run build:widget",
+    "pretest": "npm run build:widget",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -46,6 +49,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.1",
     "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.0",
     "eslint": "^10.4.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.6.0",

@@ -66,7 +66,7 @@ export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions
     const urlObj = new URL(req.url!, `http://localhost:${port}`);
 
     if (urlObj.pathname === "/widget.js") {
-      const widgetPath = path.join(srcDir, "widget.js");
+      const widgetPath = path.join(srcDir, "..", "dist", "widget.js");
       fs.readFile(widgetPath, "utf8", (err, content) => {
         if (err) {
           res.writeHead(500);
@@ -74,8 +74,8 @@ export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions
           return;
         }
         const injectedContent = content
-          .replace("__WEBSOCKET_BASE_URL__", `ws://localhost:${port}/ws`)
-          .replace("__WIDGET_VERSION__", pkgVersion);
+          .replaceAll("__WEBSOCKET_BASE_URL__", `ws://localhost:${port}/ws`)
+          .replaceAll("__WIDGET_VERSION__", pkgVersion);
         res.writeHead(200, {
           "Content-Type": "application/javascript",
           "Cache-Control": "no-store",

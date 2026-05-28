@@ -21,15 +21,6 @@ export default [
     },
   },
   {
-    files: ["src/widget.js"],
-    languageOptions: {
-      globals: {
-        ...globals.browser,
-        html2canvas: "readonly",
-      },
-    },
-  },
-  {
     files: ["extension/**/*.js"],
     languageOptions: {
       globals: {
@@ -39,6 +30,6 @@ export default [
     },
   },
   {
-    ignores: ["node_modules/", "dist/"],
+    ignores: ["node_modules/", "dist/", "src/widget/"],
   },
 ];
