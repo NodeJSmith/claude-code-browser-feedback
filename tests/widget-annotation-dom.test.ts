@@ -214,10 +214,7 @@ describe("deletePendingItem", () => {
   it("removes item from local pending when offline", () => {
     setIsConnected(false);
     setWs(null);
-    setLocalPendingItems([
-      makeFeedbackItem({ id: "a" }),
-      makeFeedbackItem({ id: "b" }),
-    ]);
+    setLocalPendingItems([makeFeedbackItem({ id: "a" }), makeFeedbackItem({ id: "b" })]);
 
     deletePendingItem("a");
 

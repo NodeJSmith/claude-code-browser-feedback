@@ -38,13 +38,15 @@ describe("generateMarkdown", () => {
   });
 
   it("includes element selector and full path", () => {
-    const items = [makeFeedbackItem({
-      element: {
-        ...makeFeedbackItem().element,
-        selector: "#submit",
-        fullSelector: "body > form > #submit",
-      },
-    })];
+    const items = [
+      makeFeedbackItem({
+        element: {
+          ...makeFeedbackItem().element,
+          selector: "#submit",
+          fullSelector: "body > form > #submit",
+        },
+      }),
+    ];
     const md = generateMarkdown(items);
 
     expect(md).toContain("**Element:** `#submit`");
@@ -66,12 +68,14 @@ describe("generateMarkdown", () => {
   });
 
   it("includes HTML block from outerHTML", () => {
-    const items = [makeFeedbackItem({
-      element: {
-        ...makeFeedbackItem().element,
-        outerHTML: '<button id="submit" class="btn primary">Click me</button>',
-      },
-    })];
+    const items = [
+      makeFeedbackItem({
+        element: {
+          ...makeFeedbackItem().element,
+          outerHTML: '<button id="submit" class="btn primary">Click me</button>',
+        },
+      }),
+    ];
     const md = generateMarkdown(items);
 
     expect(md).toContain("**HTML:**");
@@ -133,10 +137,7 @@ describe("generateMarkdown", () => {
   });
 
   it("numbers multiple items", () => {
-    const items = [
-      makeFeedbackItem({ id: "fb-1" }),
-      makeFeedbackItem({ id: "fb-2" }),
-    ];
+    const items = [makeFeedbackItem({ id: "fb-1" }), makeFeedbackItem({ id: "fb-2" })];
     const md = generateMarkdown(items);
 
     expect(md).toContain("## Item 1");

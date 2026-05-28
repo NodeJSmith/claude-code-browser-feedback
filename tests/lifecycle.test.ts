@@ -77,7 +77,9 @@ describe("lifecycle: in-flight counter", () => {
         }),
     );
 
-    const { pushFeedback, getInFlightCount } = createPushFeedback({ mcpServer: mockServer.asServer });
+    const { pushFeedback, getInFlightCount } = createPushFeedback({
+      mcpServer: mockServer.asServer,
+    });
 
     const pushPromise = pushFeedback([makeItem()], SESSION_ID);
 
@@ -92,7 +94,9 @@ describe("lifecycle: in-flight counter", () => {
 
   it("in-flight count decrements after push fails", async () => {
     mockServer.notification.mockRejectedValue(new Error("transport error"));
-    const { pushFeedback, getInFlightCount } = createPushFeedback({ mcpServer: mockServer.asServer });
+    const { pushFeedback, getInFlightCount } = createPushFeedback({
+      mcpServer: mockServer.asServer,
+    });
 
     const result = await pushFeedback([makeItem()], SESSION_ID);
 
@@ -219,4 +223,3 @@ describe("lifecycle: shutdown cleanup", () => {
     expect(vi.mocked(screenshots.cleanupScreenshots).mock.calls[0][0]).toBe(SESSION_ID);
   });
 });
-

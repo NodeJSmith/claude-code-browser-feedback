@@ -42,7 +42,10 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
     return null;
   }
 
-  async function pushFeedbackViaHttp(items: unknown[], targetSessionId?: string): Promise<{ ok: boolean; reason?: string }> {
+  async function pushFeedbackViaHttp(
+    items: unknown[],
+    targetSessionId?: string,
+  ): Promise<{ ok: boolean; reason?: string }> {
     try {
       const response = await fetch(`${baseUrl}/push-notification`, {
         method: "POST",

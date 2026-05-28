@@ -37,8 +37,8 @@ that operate on it:
 export {
   sessionRegistry,
   connectedClients,
-  isHttpServerOwner,        // mutable flag — needs a setter
-  setHttpServerOwner,       // setter so startup can flip it
+  isHttpServerOwner, // mutable flag — needs a setter
+  setHttpServerOwner, // setter so startup can flip it
   getSessionPending,
   setSessionPending,
   getSessionReady,
@@ -48,7 +48,7 @@ export {
   persistSession,
   findOrphanBuckets,
   migrateOrphanInto,
-}
+};
 ```
 
 **Imports from siblings** — `./storage.ts`, `./utils.ts` (`isValidSessionId`,
@@ -93,7 +93,7 @@ export function createProxyClient({ port, sessionId, processId, projectDir }) {
     deleteFeedbackViaHttp,
     registerSessionViaHttp,
     unregisterSessionViaHttp,
-  }
+  };
 }
 ```
 
@@ -183,7 +183,14 @@ The two MCP request handlers (`ListToolsRequestSchema` and
 **Exports**
 
 ```js
-export function registerMcpHandlers({ mcpServer, port, sessionId, sessionStore, broadcast, proxy }) {
+export function registerMcpHandlers({
+  mcpServer,
+  port,
+  sessionId,
+  sessionStore,
+  broadcast,
+  proxy,
+}) {
   // Calls mcpServer.setRequestHandler(...) for ListTools and CallTool.
   // No return value.
 }
@@ -220,16 +227,16 @@ After all extractions, `server.js` becomes an orchestrator:
 
 ## Shared State Ownership
 
-| State | Type | Owned by | Notes |
-|---|---|---|---|
-| `sessionRegistry` | `Map<string, SessionMeta>` | `session-store.js` | Read/written by HTTP endpoints and startup |
-| `pendingFeedbackBySession` | `Map<string, Feedback[]>` | `session-store.js` | Written by WS `feedback` message and HTTP DELETE |
-| `readyFeedbackBySession` | `Map<string, Feedback[]>` | `session-store.js` | Written by WS `send_to_claude`; read by MCP tools |
-| `feedbackResolversBySession` | `Map<string, Resolver[]>` | `session-store.js` | Written/resolved by WS `send_to_claude`; pushed by MCP wait tools |
-| `connectedClientsBySession` | `Map<string, Set<WebSocket>>` | `session-store.js` | Mutated by WS connect/close; read by broadcast |
-| `connectedClients` | `Set<WebSocket>` | `session-store.js` | Global client count for `/status` total |
-| `isHttpServerOwner` | `boolean` | `session-store.js` | Set once in `tryListenWithRetry`; read by all layers |
-| `isShuttingDown` | `boolean` | `server.js` | Guards double-shutdown; local to entry point |
+| State                        | Type                          | Owned by           | Notes                                                             |
+| ---------------------------- | ----------------------------- | ------------------ | ----------------------------------------------------------------- |
+| `sessionRegistry`            | `Map<string, SessionMeta>`    | `session-store.js` | Read/written by HTTP endpoints and startup                        |
+| `pendingFeedbackBySession`   | `Map<string, Feedback[]>`     | `session-store.js` | Written by WS `feedback` message and HTTP DELETE                  |
+| `readyFeedbackBySession`     | `Map<string, Feedback[]>`     | `session-store.js` | Written by WS `send_to_claude`; read by MCP tools                 |
+| `feedbackResolversBySession` | `Map<string, Resolver[]>`     | `session-store.js` | Written/resolved by WS `send_to_claude`; pushed by MCP wait tools |
+| `connectedClientsBySession`  | `Map<string, Set<WebSocket>>` | `session-store.js` | Mutated by WS connect/close; read by broadcast                    |
+| `connectedClients`           | `Set<WebSocket>`              | `session-store.js` | Global client count for `/status` total                           |
+| `isHttpServerOwner`          | `boolean`                     | `session-store.js` | Set once in `tryListenWithRetry`; read by all layers              |
+| `isShuttingDown`             | `boolean`                     | `server.js`        | Guards double-shutdown; local to entry point                      |
 
 **Design note on `isHttpServerOwner`**: this flag is the mode switch that
 determines whether a process routes requests locally or proxies them. Putting
@@ -375,13 +382,13 @@ the process being alive). Adding MCP tool unit tests is deferred to Epic 3.
 
 ## What Does Not Move
 
-| Item | Stays in | Reason |
-|---|---|---|
+| Item                                                             | Stays in    | Reason                                                                            |
+| ---------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------- |
 | `PORT`, `PKG_VERSION`, `PROJECT_DIR`, `SESSION_ID`, `PROCESS_ID` | `server.js` | Module-level constants derived from environment; wired into everything at startup |
-| `mcpServer` instantiation and `mcpServer.connect(transport)` | `server.js` | Lifecycle — must connect before HTTP binds |
-| `tryListenWithRetry` | `server.js` | Owns `isHttpServerOwner` transition; orchestrates the proxy/owner decision |
-| `main`, `shutdown` | `server.js` | Top-level orchestration; the only consumers of all other modules |
-| Signal handlers, stdin close | `server.js` | Process lifecycle |
+| `mcpServer` instantiation and `mcpServer.connect(transport)`     | `server.js` | Lifecycle — must connect before HTTP binds                                        |
+| `tryListenWithRetry`                                             | `server.js` | Owns `isHttpServerOwner` transition; orchestrates the proxy/owner decision        |
+| `main`, `shutdown`                                               | `server.js` | Top-level orchestration; the only consumers of all other modules                  |
+| Signal handlers, stdin close                                     | `server.js` | Process lifecycle                                                                 |
 
 ---
 

@@ -149,7 +149,8 @@ export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: Htt
     if (urlObj.pathname === "/broadcast" && req.method === "POST") {
       parseJsonBody(req)
         .then((body) => {
-          const sessionId = (body.sessionId as string) || urlObj.searchParams.get("session") || "unmatched";
+          const sessionId =
+            (body.sessionId as string) || urlObj.searchParams.get("session") || "unmatched";
           const processId = body.processId as string | undefined;
           const registered = sessionRegistry.get(sessionId);
           if (registered && registered.processId) {
@@ -196,7 +197,11 @@ export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: Htt
           const registered = sessionRegistry.get(sessionId);
           if (!registered || !registered.processId || registered.processId !== processId) {
             res.writeHead(403, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Unauthorized: processId does not match registered session" }));
+            res.end(
+              JSON.stringify({
+                error: "Unauthorized: processId does not match registered session",
+              }),
+            );
             return;
           }
           const items = data.items as FeedbackItem[];
@@ -241,7 +246,8 @@ export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: Htt
               if (oldClients.size > 0) {
                 const newClients = getSessionClients(data.sessionId as string);
                 for (const client of oldClients) {
-                  (client as unknown as { _sessionId: string })._sessionId = data.sessionId as string;
+                  (client as unknown as { _sessionId: string })._sessionId =
+                    data.sessionId as string;
                   newClients.add(client);
                 }
               }

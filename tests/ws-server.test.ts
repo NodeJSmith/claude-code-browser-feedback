@@ -51,7 +51,12 @@ describe("ws-server send_to_claude with pushFeedback", () => {
     TEST_PORT++;
     httpServer = http.createServer();
     pushFeedback = vi.fn();
-    ({ wss } = createWsServer({ httpServer, port: TEST_PORT, pushFeedback, broadcastPendingStatus: () => {} }));
+    ({ wss } = createWsServer({
+      httpServer,
+      port: TEST_PORT,
+      pushFeedback,
+      broadcastPendingStatus: () => {},
+    }));
 
     sessionRegistry.set(SESSION_ID, {
       sessionId: SESSION_ID,

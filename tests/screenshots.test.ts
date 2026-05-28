@@ -122,7 +122,11 @@ describe("screenshots", () => {
     });
 
     it("returns null for missing data URI prefix", () => {
-      const result = screenshots.saveScreenshot("noprefix", "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", sessionId);
+      const result = screenshots.saveScreenshot(
+        "noprefix",
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+        sessionId,
+      );
       expect(result).toBeNull();
     });
 

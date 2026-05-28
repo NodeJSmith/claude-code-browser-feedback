@@ -107,7 +107,8 @@ describe("getFullSelector", () => {
 
 describe("getElementInfo", () => {
   it("returns complete element metadata", () => {
-    document.body.innerHTML = '<button id="submit" class="btn primary" data-action="save">Click me</button>';
+    document.body.innerHTML =
+      '<button id="submit" class="btn primary" data-action="save">Click me</button>';
     const btn = document.querySelector("button")!;
     const info = getElementInfo(btn);
 

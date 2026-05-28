@@ -72,7 +72,10 @@ describe("resolveSessionFromScript", () => {
   it("extracts session from tagged script element", () => {
     const script = document.createElement("script");
     script.id = "claude-feedback-widget-script";
-    script.setAttribute("src", "http://localhost:9877/widget.js?session=550e8400-e29b-41d4-a716-446655440000");
+    script.setAttribute(
+      "src",
+      "http://localhost:9877/widget.js?session=550e8400-e29b-41d4-a716-446655440000",
+    );
     document.head.appendChild(script);
 
     expect(resolveSessionFromScript()).toBe("550e8400-e29b-41d4-a716-446655440000");
@@ -185,17 +188,27 @@ function setupMockWebSocket() {
     close: vi.fn(),
   };
   globalThis.WebSocket = class {
-    constructor() { return socket; }
+    constructor() {
+      return socket;
+    }
     static OPEN = 1;
     static CLOSED = 3;
     static CONNECTING = 0;
     static CLOSING = 2;
   } as unknown as typeof WebSocket;
 
-  return { socket, restore: () => { globalThis.WebSocket = originalWS; } };
+  return {
+    socket,
+    restore: () => {
+      globalThis.WebSocket = originalWS;
+    },
+  };
 }
 
-function dispatch(socket: { onmessage: ((ev: { data: string }) => void) | null }, msg: Record<string, unknown>) {
+function dispatch(
+  socket: { onmessage: ((ev: { data: string }) => void) | null },
+  msg: Record<string, unknown>,
+) {
   socket.onmessage!({ data: JSON.stringify(msg) });
 }
 
@@ -206,7 +219,9 @@ describe("connectWebSocket lifecycle", () => {
       connectWebSocket();
       socket.onopen!({});
       expect(state.isConnected).toBe(true);
-    } finally { restore(); }
+    } finally {
+      restore();
+    }
   });
 
   it("sets isConnected false on close", () => {
@@ -216,7 +231,9 @@ describe("connectWebSocket lifecycle", () => {
       socket.onopen!({});
       socket.onclose!({});
       expect(state.isConnected).toBe(false);
-    } finally { restore(); }
+    } finally {
+      restore();
+    }
   });
 });
 
@@ -249,15 +266,23 @@ describe("message dispatch via connectWebSocket", () => {
   });
 
   it("does not throw on 'connected' with sessionWarning", () => {
-    expect(() => dispatch(socket, { type: "connected", sessionWarning: "no session param" })).not.toThrow();
+    expect(() =>
+      dispatch(socket, { type: "connected", sessionWarning: "no session param" }),
+    ).not.toThrow();
   });
 
   it("does not throw on 'connected' with duplicateWarning", () => {
-    expect(() => dispatch(socket, { type: "connected", duplicateWarning: "another tab open" })).not.toThrow();
+    expect(() =>
+      dispatch(socket, { type: "connected", duplicateWarning: "another tab open" }),
+    ).not.toThrow();
   });
 
   it("updates session ID on 'connected' with rebound", () => {
-    dispatch(socket, { type: "connected", sessionId: "new-id", rebound: { from: "old", to: "new-id" } });
+    dispatch(socket, {
+      type: "connected",
+      sessionId: "new-id",
+      rebound: { from: "old", to: "new-id" },
+    });
     expect(state.currentSessionId).toBe("new-id");
   });
 
@@ -272,7 +297,9 @@ describe("message dispatch via connectWebSocket", () => {
   });
 
   it("does not throw on 'feedback_deleted'", () => {
-    expect(() => dispatch(socket, { type: "feedback_deleted", success: true, id: "fb-1" })).not.toThrow();
+    expect(() =>
+      dispatch(socket, { type: "feedback_deleted", success: true, id: "fb-1" }),
+    ).not.toThrow();
   });
 
   it("calls onAnnotationRequest on 'request_annotation'", () => {
@@ -307,22 +334,36 @@ describe("message dispatch via connectWebSocket", () => {
 });
 
 describe("reconnect flush", () => {
-  afterEach(() => { vi.useRealTimers(); });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("flushes localPendingItems on open and clears the list", () => {
     const { socket, restore } = setupMockWebSocket();
     try {
-      const item1 = { id: "a", description: "first" } as unknown as import("../src/widget/widget-state.ts").FeedbackItem;
-      const item2 = { id: "b", description: "second" } as unknown as import("../src/widget/widget-state.ts").FeedbackItem;
+      const item1 = {
+        id: "a",
+        description: "first",
+      } as unknown as import("../src/widget/widget-state.ts").FeedbackItem;
+      const item2 = {
+        id: "b",
+        description: "second",
+      } as unknown as import("../src/widget/widget-state.ts").FeedbackItem;
       setLocalPendingItems([item1, item2]);
 
       connectWebSocket();
       socket.onopen!({});
 
-      expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "feedback", payload: item1 }));
-      expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "feedback", payload: item2 }));
+      expect(socket.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: "feedback", payload: item1 }),
+      );
+      expect(socket.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: "feedback", payload: item2 }),
+      );
       expect(state.localPendingItems).toHaveLength(0);
-    } finally { restore(); }
+    } finally {
+      restore();
+    }
   });
 
   it("sends nothing when localPendingItems is empty on open", () => {
@@ -333,6 +374,8 @@ describe("reconnect flush", () => {
       socket.onopen!({});
 
       expect(socket.send).not.toHaveBeenCalled();
-    } finally { restore(); }
+    } finally {
+      restore();
+    }
   });
 });

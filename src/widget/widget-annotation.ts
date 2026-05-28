@@ -74,7 +74,9 @@ export async function showPanel(): Promise<void> {
   }
 
   if (screenshotEl) {
-    const includeScreenshotCheckbox = getEl(`${WIDGET_ID}-include-screenshot`) as HTMLInputElement | null;
+    const includeScreenshotCheckbox = getEl(
+      `${WIDGET_ID}-include-screenshot`,
+    ) as HTMLInputElement | null;
     if (includeScreenshotCheckbox && includeScreenshotCheckbox.checked) {
       screenshotEl.alt = "Screenshot will be captured when submitted";
       screenshotEl.removeAttribute("src");
@@ -114,17 +116,23 @@ export async function addItem(): Promise<void> {
     return;
   }
 
-  const description = (getEl(`${WIDGET_ID}-description`) as HTMLTextAreaElement | null)?.value || "";
-  const includeLogs = (getEl(`${WIDGET_ID}-include-logs`) as HTMLInputElement | null)?.checked ?? true;
-  const includeStyles = (getEl(`${WIDGET_ID}-include-styles`) as HTMLInputElement | null)?.checked ?? true;
-  const includeScreenshot = (getEl(`${WIDGET_ID}-include-screenshot`) as HTMLInputElement | null)?.checked ?? true;
+  const description =
+    (getEl(`${WIDGET_ID}-description`) as HTMLTextAreaElement | null)?.value || "";
+  const includeLogs =
+    (getEl(`${WIDGET_ID}-include-logs`) as HTMLInputElement | null)?.checked ?? true;
+  const includeStyles =
+    (getEl(`${WIDGET_ID}-include-styles`) as HTMLInputElement | null)?.checked ?? true;
+  const includeScreenshot =
+    (getEl(`${WIDGET_ID}-include-screenshot`) as HTMLInputElement | null)?.checked ?? true;
 
   const elementInfo = getElementInfo(selectedElement);
   if (!includeStyles) {
     delete elementInfo.computedStyles;
   }
 
-  const screenshot = includeScreenshot ? await captureScreenshot(selectedElement, WS_BASE_URL) : null;
+  const screenshot = includeScreenshot
+    ? await captureScreenshot(selectedElement, WS_BASE_URL)
+    : null;
 
   const feedback: FeedbackItem = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2),
@@ -483,10 +491,7 @@ export function bindEvents(): void {
 
   function onDocumentMousemove(e: MouseEvent) {
     if (!isDragging) return;
-    const x = Math.max(
-      0,
-      Math.min(e.clientX - dragOffsetX, window.innerWidth - panel.offsetWidth),
-    );
+    const x = Math.max(0, Math.min(e.clientX - dragOffsetX, window.innerWidth - panel.offsetWidth));
     const y = Math.max(
       0,
       Math.min(e.clientY - dragOffsetY, window.innerHeight - panel.offsetHeight),

@@ -4,7 +4,13 @@ import crypto from "node:crypto";
 
 export function deriveSessionId(projectDir: string): string {
   const hash = crypto.createHash("sha256").update(projectDir).digest("hex");
-  return [hash.slice(0, 8), hash.slice(8, 12), hash.slice(12, 16), hash.slice(16, 20), hash.slice(20, 32)].join("-");
+  return [
+    hash.slice(0, 8),
+    hash.slice(8, 12),
+    hash.slice(12, 16),
+    hash.slice(16, 20),
+    hash.slice(20, 32),
+  ].join("-");
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -122,4 +128,3 @@ export function detectProjectUrl(projectDir: string): DetectionResult {
 
   return { url: null, detectedFrom: null };
 }
-
