@@ -19,6 +19,22 @@ import {
   formatFeedbackAsContent,
 } from "./utils.ts";
 import * as storage from "./storage.ts";
+import {
+  sessionRegistry,
+  connectedClients,
+  isHttpServerOwner,
+  setHttpServerOwner,
+  persistSession,
+  getSessionPending,
+  setSessionPending,
+  getSessionReady,
+  setSessionReady,
+  getSessionResolvers,
+  getSessionClients,
+  findOrphanBuckets,
+  migrateOrphanInto,
+  deleteSession,
+} from "./session-store.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,95 +49,6 @@ const PROJECT_DIR = process.cwd();
 const SESSION_ID = deriveSessionId(PROJECT_DIR);
 const PROCESS_ID = crypto.randomUUID();
 
-// Session registry (owner server only): sessionId -> metadata
-const sessionRegistry = new Map();
-
-// Session-partitioned feedback storage
-const pendingFeedbackBySession = new Map(); // sessionId -> feedback[]
-const readyFeedbackBySession = new Map(); // sessionId -> feedback[]
-const feedbackResolversBySession = new Map(); // sessionId -> resolver[]
-const connectedClientsBySession = new Map(); // sessionId -> Set<WebSocket>
-let connectedClients = new Set(); // All clients (for total count in /status)
-let isHttpServerOwner = false; // Track if this instance owns the HTTP server
-
-// Session-partitioned data accessors. The owner process persists pending+ready
-// queues to disk via storage.js so feedback survives crashes and restarts.
-function persistSession(sid) {
-  if (!isHttpServerOwner || !isValidSessionId(sid)) return;
-  storage.save(sid, {
-    pending: pendingFeedbackBySession.get(sid) || [],
-    ready: readyFeedbackBySession.get(sid) || [],
-  });
-}
-function getSessionPending(sid) {
-  if (!pendingFeedbackBySession.has(sid)) pendingFeedbackBySession.set(sid, []);
-  return pendingFeedbackBySession.get(sid);
-}
-function setSessionPending(sid, arr) {
-  pendingFeedbackBySession.set(sid, arr);
-  persistSession(sid);
-}
-function getSessionReady(sid) {
-  if (!readyFeedbackBySession.has(sid)) readyFeedbackBySession.set(sid, []);
-  return readyFeedbackBySession.get(sid);
-}
-function setSessionReady(sid, arr) {
-  readyFeedbackBySession.set(sid, arr);
-  persistSession(sid);
-}
-function getSessionResolvers(sid) {
-  if (!feedbackResolversBySession.has(sid)) feedbackResolversBySession.set(sid, []);
-  return feedbackResolversBySession.get(sid);
-}
-function getSessionClients(sid) {
-  if (!connectedClientsBySession.has(sid)) connectedClientsBySession.set(sid, new Set());
-  return connectedClientsBySession.get(sid);
-}
-
-// Find feedback buckets that aren't tied to any registered MCP session. These
-// are the symptom of issue #46: a stale widget filed feedback under a session
-// ID that nobody is listening for. Used to surface (and optionally auto-rescue)
-// the data via the MCP tools.
-function findOrphanBuckets() {
-  const orphans = [];
-  const seen = new Set();
-  for (const [sid, items] of pendingFeedbackBySession) {
-    if (!isValidSessionId(sid)) continue;
-    if (sessionRegistry.has(sid)) continue;
-    seen.add(sid);
-    orphans.push({
-      sessionId: sid,
-      pendingCount: items.length,
-      readyCount: (readyFeedbackBySession.get(sid) || []).length,
-      clientCount: (connectedClientsBySession.get(sid) || new Set()).size,
-    });
-  }
-  for (const [sid, items] of readyFeedbackBySession) {
-    if (!isValidSessionId(sid)) continue;
-    if (sessionRegistry.has(sid) || seen.has(sid)) continue;
-    orphans.push({
-      sessionId: sid,
-      pendingCount: 0,
-      readyCount: items.length,
-      clientCount: (connectedClientsBySession.get(sid) || new Set()).size,
-    });
-  }
-  return orphans.filter((o) => o.pendingCount > 0 || o.readyCount > 0);
-}
-
-// Move all pending+ready feedback from an orphan bucket into the target
-// session's queues, then drop the orphan. Used when exactly one MCP session
-// is registered and auto-rescue is safe.
-function migrateOrphanInto(targetSid, orphanSid) {
-  const oldPending = pendingFeedbackBySession.get(orphanSid) || [];
-  const oldReady = readyFeedbackBySession.get(orphanSid) || [];
-  if (oldPending.length) getSessionPending(targetSid).push(...oldPending);
-  if (oldReady.length) getSessionReady(targetSid).push(...oldReady);
-  pendingFeedbackBySession.delete(orphanSid);
-  readyFeedbackBySession.delete(orphanSid);
-  storage.remove(orphanSid);
-  persistSession(targetSid);
-}
 
 // Helper to parse JSON body from an HTTP request
 function parseJsonBody(req) {
@@ -479,26 +406,23 @@ const httpServer = http.createServer((req, res) => {
         // Migrate feedback from any old session with the same projectDir but different sessionId
         for (const [existingId, existingMeta] of sessionRegistry) {
           if (existingId !== data.sessionId && existingMeta.projectDir === data.projectDir) {
-            const oldPending = pendingFeedbackBySession.get(existingId);
-            if (oldPending && oldPending.length > 0) {
+            const oldPending = getSessionPending(existingId);
+            if (oldPending.length > 0) {
               getSessionPending(data.sessionId).push(...oldPending);
             }
-            const oldReady = readyFeedbackBySession.get(existingId);
-            if (oldReady && oldReady.length > 0) {
+            const oldReady = getSessionReady(existingId);
+            if (oldReady.length > 0) {
               getSessionReady(data.sessionId).push(...oldReady);
             }
-            const oldClients = connectedClientsBySession.get(existingId);
-            if (oldClients && oldClients.size > 0) {
+            const oldClients = getSessionClients(existingId);
+            if (oldClients.size > 0) {
               const newClients = getSessionClients(data.sessionId);
               for (const client of oldClients) {
                 client._sessionId = data.sessionId;
                 newClients.add(client);
               }
             }
-            pendingFeedbackBySession.delete(existingId);
-            readyFeedbackBySession.delete(existingId);
-            feedbackResolversBySession.delete(existingId);
-            connectedClientsBySession.delete(existingId);
+            deleteSession(existingId);
             sessionRegistry.delete(existingId);
             storage.remove(existingId);
             persistSession(data.sessionId);
@@ -553,11 +477,7 @@ const httpServer = http.createServer((req, res) => {
           return;
         }
         sessionRegistry.delete(data.sessionId);
-        // Clean up session data
-        pendingFeedbackBySession.delete(data.sessionId);
-        readyFeedbackBySession.delete(data.sessionId);
-        feedbackResolversBySession.delete(data.sessionId);
-        connectedClientsBySession.delete(data.sessionId);
+        deleteSession(data.sessionId);
         console.error(`[browser-feedback-mcp] Session unregistered: ${data.sessionId}`);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true }));
@@ -1321,7 +1241,7 @@ The widget only loads in development (localhost) by default.
       const timeoutSeconds = args?.timeout_seconds || 300;
 
       // If we don't own the HTTP server, poll via HTTP
-      if (!isHttpServerOwner) {
+      if (!isHttpServerOwner()) {
         try {
           const feedback = await pollForFeedback(timeoutSeconds);
           return {
@@ -1372,7 +1292,7 @@ The widget only loads in development (localhost) by default.
       const shouldClear = args?.clear !== false;
 
       // If we don't own the HTTP server, fetch via HTTP
-      if (!isHttpServerOwner) {
+      if (!isHttpServerOwner()) {
         const result = await fetchReadyFeedback(shouldClear);
         if (result && result.feedback) {
           if (result.feedback.length === 0) {
@@ -1481,7 +1401,7 @@ The widget only loads in development (localhost) by default.
 
     case "preview_pending_feedback": {
       // If we don't own the HTTP server, fetch via HTTP
-      if (!isHttpServerOwner) {
+      if (!isHttpServerOwner()) {
         const result = await fetchPendingSummary();
         if (result) {
           if (result.count === 0) {
@@ -1550,7 +1470,7 @@ The widget only loads in development (localhost) by default.
       }
 
       // If we don't own the HTTP server, delete via HTTP
-      if (!isHttpServerOwner) {
+      if (!isHttpServerOwner()) {
         const result = await deleteFeedbackViaHttp(id);
         if (result) {
           return {
@@ -1602,7 +1522,7 @@ The widget only loads in development (localhost) by default.
       const message = args?.message || "Submit all your feedback, then click 'Done' when finished.";
 
       // If we don't own the HTTP server, use a simpler polling approach
-      if (!isHttpServerOwner) {
+      if (!isHttpServerOwner()) {
         // Check connection status first
         const status = await fetchServerStatus(SESSION_ID);
         if (!status || status.connectedClients === 0) {
@@ -1735,7 +1655,7 @@ The widget only loads in development (localhost) by default.
 
     case "get_connection_status": {
       // If we don't own the HTTP server, fetch status from the running server
-      if (!isHttpServerOwner) {
+      if (!isHttpServerOwner()) {
         const status = await fetchServerStatus(SESSION_ID);
         if (status) {
           return {
@@ -1806,7 +1726,7 @@ The widget only loads in development (localhost) by default.
       const message = args?.message || "Please annotate the issue you'd like to report.";
 
       // If we don't own the HTTP server, broadcast via HTTP
-      if (!isHttpServerOwner) {
+      if (!isHttpServerOwner()) {
         const result = await broadcastViaHttp({
           type: "request_annotation",
           message: message,
@@ -2039,7 +1959,7 @@ function shutdown(reason) {
   console.error(`[browser-feedback-mcp] Shutting down: ${reason}`);
 
   // Only close HTTP server if we own it
-  if (isHttpServerOwner) {
+  if (isHttpServerOwner()) {
     // Flush any pending disk writes before exiting so debounced feedback
     // isn't lost on shutdown.
     try {
@@ -2119,7 +2039,7 @@ async function tryListenWithRetry(maxRetries = 3, retryDelay = 1000) {
         });
       });
       // Successfully bound the port
-      isHttpServerOwner = true;
+      setHttpServerOwner(true);
       console.error(
         `[browser-feedback-mcp] HTTP/WebSocket server running on http://localhost:${PORT}`,
       );
@@ -2169,15 +2089,15 @@ async function main() {
 
   // Register this session
   const detected = detectProjectUrl(PROJECT_DIR);
-  if (isHttpServerOwner) {
+  if (isHttpServerOwner()) {
     // Rehydrate any persisted feedback queues from disk so feedback submitted
     // before a crash/restart isn't lost (fix for #46).
     try {
       for (const sid of storage.listSessions()) {
         const { pending, ready } = storage.load(sid);
         if (pending.length || ready.length) {
-          pendingFeedbackBySession.set(sid, pending);
-          readyFeedbackBySession.set(sid, ready);
+          setSessionPending(sid, pending);
+          setSessionReady(sid, ready);
           console.error(
             `[browser-feedback-mcp] Rehydrated session ${sid}: ${pending.length} pending, ${ready.length} ready`,
           );

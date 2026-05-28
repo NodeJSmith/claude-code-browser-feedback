@@ -1,0 +1,41 @@
+---
+alt: server.js module dependency graph after decomposition
+---
+```mermaid
+graph TD
+  accTitle: server.js module dependency graph
+  accDescr: Shows import relationships between the proposed modules after decomposition
+
+  utils["utils.ts (existing)"]
+  storage["storage.ts (existing)"]
+
+  store["session-store.js"]
+  proxy["proxy-client.js"]
+  http["http-server.js"]
+  ws["ws-server.js"]
+  mcp["mcp-tools.js"]
+  entry["server.js (entry)"]
+
+  store --> storage
+  store --> utils
+
+  proxy --> utils
+
+  http --> store
+  http --> utils
+  http --> storage
+
+  ws --> store
+  ws --> utils
+
+  mcp --> store
+  mcp --> utils
+
+  entry --> store
+  entry --> proxy
+  entry --> http
+  entry --> ws
+  entry --> mcp
+  entry --> utils
+  entry --> storage
+```
