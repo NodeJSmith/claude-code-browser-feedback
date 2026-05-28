@@ -12,7 +12,11 @@ const ROOT = path.join(os.tmpdir(), "claude-browser-feedback");
 // version without the mode arg, the permissions stay whatever they were —
 // usually fine because the OS clears tmp on reboot.
 function ensureRoot() {
-  try { fs.mkdirSync(ROOT, { recursive: true, mode: 0o700 }); } catch { /* ignore */ }
+  try {
+    fs.mkdirSync(ROOT, { recursive: true, mode: 0o700 });
+  } catch {
+    /* ignore */
+  }
 }
 
 function fileFor(sessionId) {
@@ -80,14 +84,22 @@ export function remove(sessionId) {
   const entry = pendingWrites.get(sessionId);
   if (entry && entry.timer) clearTimeout(entry.timer);
   pendingWrites.delete(sessionId);
-  try { fs.unlinkSync(fileFor(sessionId)); } catch { /* ignore */ }
+  try {
+    fs.unlinkSync(fileFor(sessionId));
+  } catch {
+    /* ignore */
+  }
 }
 
 // Enumerate persisted sessions on disk. Used to rehydrate on boot.
 export function listSessions() {
   ensureRoot();
   let names;
-  try { names = fs.readdirSync(ROOT); } catch { return []; }
+  try {
+    names = fs.readdirSync(ROOT);
+  } catch {
+    return [];
+  }
   const out = [];
   for (const name of names) {
     if (!name.endsWith(".json")) continue;

@@ -16,18 +16,16 @@ function activate(serverUrl, sessionId) {
   }
 
   currentSessionId = sessionId;
-  injectedScript = document.createElement('script');
-  const url = sessionId
-    ? `${serverUrl}/widget.js?session=${sessionId}`
-    : `${serverUrl}/widget.js`;
+  injectedScript = document.createElement("script");
+  const url = sessionId ? `${serverUrl}/widget.js?session=${sessionId}` : `${serverUrl}/widget.js`;
   injectedScript.src = url;
-  injectedScript.id = 'claude-feedback-ext-script';
+  injectedScript.id = "claude-feedback-ext-script";
   document.documentElement.appendChild(injectedScript);
 }
 
 function deactivate() {
   // Call destroy() in the MAIN world via an inline script
-  const teardown = document.createElement('script');
+  const teardown = document.createElement("script");
   teardown.textContent = `
     if (typeof window.__claudeFeedbackDestroy === 'function') {
       window.__claudeFeedbackDestroy();
@@ -43,25 +41,25 @@ function deactivate() {
   }
   currentSessionId = null;
   // Also remove any script tag that might have been left from a previous session
-  const existing = document.getElementById('claude-feedback-ext-script');
+  const existing = document.getElementById("claude-feedback-ext-script");
   if (existing) existing.remove();
 }
 
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.action === 'activate') {
+  if (message.action === "activate") {
     activate(message.serverUrl, message.sessionId);
     sendResponse({ ok: true });
-  } else if (message.action === 'deactivate') {
+  } else if (message.action === "deactivate") {
     deactivate();
     sendResponse({ ok: true });
-  } else if (message.action === 'ping') {
+  } else if (message.action === "ping") {
     sendResponse({ ok: true });
   }
 });
 
 // On load, check if this tab should be active (handles navigation/reload)
-chrome.runtime.sendMessage({ action: 'getTabState' }, (response) => {
+chrome.runtime.sendMessage({ action: "getTabState" }, (response) => {
   if (chrome.runtime.lastError) return; // extension context invalidated
   if (response && response.active && response.sessionId) {
     activate(response.serverUrl, response.sessionId);

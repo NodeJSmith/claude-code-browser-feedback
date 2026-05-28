@@ -6,7 +6,7 @@
  * Supports session isolation for multi-project scenarios.
  */
 
-const DEFAULT_SERVER_URL = 'http://localhost:9877';
+const DEFAULT_SERVER_URL = "http://localhost:9877";
 
 // In-memory set of active tab IDs (persisted to storage for reload survival)
 const activeTabs = new Set();
@@ -15,7 +15,7 @@ const activeTabs = new Set();
 const tabSessionMap = new Map();
 
 // Load persisted state on startup
-chrome.storage.local.get(['activeTabs', 'serverUrl', 'tabSessions'], (result) => {
+chrome.storage.local.get(["activeTabs", "serverUrl", "tabSessions"], (result) => {
   if (result.activeTabs) {
     for (const id of result.activeTabs) activeTabs.add(id);
   }
@@ -28,7 +28,7 @@ chrome.storage.local.get(['activeTabs', 'serverUrl', 'tabSessions'], (result) =>
 
 function getServerUrl() {
   return new Promise((resolve) => {
-    chrome.storage.local.get('serverUrl', (result) => {
+    chrome.storage.local.get("serverUrl", (result) => {
       resolve(result.serverUrl || DEFAULT_SERVER_URL);
     });
   });
@@ -47,11 +47,11 @@ function persistActiveTabs() {
 
 function updateBadge(tabId, active) {
   if (active) {
-    chrome.action.setBadgeText({ text: 'ON', tabId });
-    chrome.action.setBadgeBackgroundColor({ color: '#22c55e', tabId });
+    chrome.action.setBadgeText({ text: "ON", tabId });
+    chrome.action.setBadgeBackgroundColor({ color: "#22c55e", tabId });
   } else {
-    chrome.action.setBadgeText({ text: 'OFF', tabId });
-    chrome.action.setBadgeBackgroundColor({ color: '#9ca3af', tabId });
+    chrome.action.setBadgeText({ text: "OFF", tabId });
+    chrome.action.setBadgeBackgroundColor({ color: "#9ca3af", tabId });
   }
 }
 
@@ -120,7 +120,7 @@ async function validateOrRefreshSession(tabId, cachedSessionId, serverUrl) {
   const sessions = await fetchSessions(serverUrl);
   if (sessions.length === 0) return cachedSessionId; // Server unreachable, keep cached
 
-  const stillExists = sessions.some(s => s.sessionId === cachedSessionId);
+  const stillExists = sessions.some((s) => s.sessionId === cachedSessionId);
   if (stillExists) return cachedSessionId;
 
   // Session is stale — re-resolve by project URL
@@ -129,7 +129,9 @@ async function validateOrRefreshSession(tabId, cachedSessionId, serverUrl) {
   if (resolved) {
     tabSessionMap.set(tabId, resolved);
     persistActiveTabs();
-    console.log(`[Feedback Ext] Session refreshed: ${cachedSessionId.slice(0, 8)} -> ${resolved.slice(0, 8)}`);
+    console.log(
+      `[Feedback Ext] Session refreshed: ${cachedSessionId.slice(0, 8)} -> ${resolved.slice(0, 8)}`,
+    );
   }
   return resolved || cachedSessionId;
 }
@@ -143,7 +145,7 @@ async function toggleTab(tabId) {
     // Deactivate
     activeTabs.delete(tabId);
     tabSessionMap.delete(tabId);
-    await sendToTab(tabId, { action: 'deactivate' });
+    await sendToTab(tabId, { action: "deactivate" });
     updateBadge(tabId, false);
     persistActiveTabs();
     return { active: false };
@@ -164,7 +166,7 @@ async function toggleTab(tabId) {
 
   activeTabs.add(tabId);
   tabSessionMap.set(tabId, sessionId);
-  await sendToTab(tabId, { action: 'activate', serverUrl, sessionId });
+  await sendToTab(tabId, { action: "activate", serverUrl, sessionId });
   updateBadge(tabId, true);
   persistActiveTabs();
   return { active: true };
@@ -172,7 +174,7 @@ async function toggleTab(tabId) {
 
 // Handle messages from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'toggle') {
+  if (message.action === "toggle") {
     const tabId = message.tabId;
     toggleTab(tabId).then((result) => {
       sendResponse(result);
@@ -180,7 +182,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // async response
   }
 
-  if (message.action === 'getTabState') {
+  if (message.action === "getTabState") {
     // Called by content script on page load
     const tabId = sender.tab?.id;
     if (tabId && activeTabs.has(tabId)) {
@@ -199,7 +201,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  if (message.action === 'getState') {
+  if (message.action === "getState") {
     // Called by popup
     const tabId = message.tabId;
     getServerUrl().then((serverUrl) => {
@@ -212,31 +214,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // async response
   }
 
-  if (message.action === 'setServerUrl') {
+  if (message.action === "setServerUrl") {
     chrome.storage.local.set({ serverUrl: message.serverUrl }, () => {
       sendResponse({ ok: true });
     });
     return true; // async response
   }
 
-  if (message.action === 'getSessions') {
-    getServerUrl().then(serverUrl => {
-      fetchSessions(serverUrl).then(sessions => {
+  if (message.action === "getSessions") {
+    getServerUrl().then((serverUrl) => {
+      fetchSessions(serverUrl).then((sessions) => {
         sendResponse({ sessions });
       });
     });
     return true; // async response
   }
 
-  if (message.action === 'selectSession') {
+  if (message.action === "selectSession") {
     // User picked a session from the popup picker
     const { tabId, sessionId } = message;
     tabSessionMap.set(tabId, sessionId);
     activeTabs.add(tabId);
 
     getServerUrl().then(async (serverUrl) => {
-      await sendToTab(tabId, { action: 'deactivate' });
-      await sendToTab(tabId, { action: 'activate', serverUrl, sessionId });
+      await sendToTab(tabId, { action: "deactivate" });
+      await sendToTab(tabId, { action: "activate", serverUrl, sessionId });
       updateBadge(tabId, true);
       persistActiveTabs();
       sendResponse({ active: true });
@@ -247,12 +249,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Re-inject widget when an active tab navigates to a new page
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
-  if (changeInfo.status === 'complete' && activeTabs.has(tabId)) {
+  if (changeInfo.status === "complete" && activeTabs.has(tabId)) {
     const serverUrl = await getServerUrl();
     const cachedSession = tabSessionMap.get(tabId) || null;
     const sessionId = await validateOrRefreshSession(tabId, cachedSession, serverUrl);
     updateBadge(tabId, true);
-    await sendToTab(tabId, { action: 'activate', serverUrl, sessionId });
+    await sendToTab(tabId, { action: "activate", serverUrl, sessionId });
   }
 });
 

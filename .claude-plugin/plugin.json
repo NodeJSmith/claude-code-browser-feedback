@@ -8,13 +8,7 @@
   },
   "repository": "https://github.com/itk-dev/mcp-claude-code-browser-feedback",
   "license": "MIT",
-  "keywords": [
-    "itk-dev",
-    "mcp",
-    "browser",
-    "feedback",
-    "annotation"
-  ],
+  "keywords": ["itk-dev", "mcp", "browser", "feedback", "annotation"],
   "hooks": {
     "SessionStart": [
       {

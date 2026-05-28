@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { spawn } from 'child_process';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import crypto from 'node:crypto';
-import WebSocket from 'ws';
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { spawn } from "child_process";
+import path from "path";
+import { fileURLToPath } from "url";
+import crypto from "node:crypto";
+import WebSocket from "ws";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SERVER_PATH = path.join(__dirname, '..', 'src', 'server.js');
+const SERVER_PATH = path.join(__dirname, "..", "src", "server.js");
 const TEST_PORT = 19877;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
 
@@ -20,26 +20,26 @@ async function waitForServer(maxRetries = 20, delay = 250) {
     } catch {
       // Server not ready yet
     }
-    await new Promise(r => setTimeout(r, delay));
+    await new Promise((r) => setTimeout(r, delay));
   }
-  throw new Error('Server did not start in time');
+  throw new Error("Server did not start in time");
 }
 
 beforeAll(async () => {
-  serverProcess = spawn('node', [SERVER_PATH], {
+  serverProcess = spawn("node", [SERVER_PATH], {
     env: { ...process.env, FEEDBACK_PORT: String(TEST_PORT) },
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ["pipe", "pipe", "pipe"],
   });
 
   // Drain stderr to prevent buffer blocking
-  serverProcess.stderr.on('data', () => {});
+  serverProcess.stderr.on("data", () => {});
 
   await waitForServer();
 }, 15000);
 
 afterAll(() => {
   if (serverProcess) {
-    serverProcess.kill('SIGTERM');
+    serverProcess.kill("SIGTERM");
   }
 });
 
@@ -47,19 +47,19 @@ afterAll(() => {
 // HTTP Basics
 // ============================================
 
-describe('HTTP basics', () => {
-  it('GET /status returns 200 with expected shape', async () => {
+describe("HTTP basics", () => {
+  it("GET /status returns 200 with expected shape", async () => {
     const resp = await fetch(`${BASE_URL}/status`);
     expect(resp.status).toBe(200);
     const data = await resp.json();
-    expect(data).toHaveProperty('status', 'running');
-    expect(data).toHaveProperty('port', TEST_PORT);
-    expect(data).toHaveProperty('connectedClients');
-    expect(data).toHaveProperty('pendingFeedback');
-    expect(data).toHaveProperty('sessions');
+    expect(data).toHaveProperty("status", "running");
+    expect(data).toHaveProperty("port", TEST_PORT);
+    expect(data).toHaveProperty("connectedClients");
+    expect(data).toHaveProperty("pendingFeedback");
+    expect(data).toHaveProperty("sessions");
   });
 
-  it('GET /nonexistent returns 404', async () => {
+  it("GET /nonexistent returns 404", async () => {
     const resp = await fetch(`${BASE_URL}/nonexistent`);
     expect(resp.status).toBe(404);
   });
@@ -69,17 +69,17 @@ describe('HTTP basics', () => {
 // Session Registration Lifecycle
 // ============================================
 
-describe('session registration', () => {
+describe("session registration", () => {
   const testSessionId = crypto.randomUUID();
 
-  it('POST /register-session with valid UUID returns 200', async () => {
+  it("POST /register-session with valid UUID returns 200", async () => {
     const resp = await fetch(`${BASE_URL}/register-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sessionId: testSessionId,
-        projectDir: '/tmp/test-project',
-        projectUrl: 'https://test.local',
+        projectDir: "/tmp/test-project",
+        projectUrl: "https://test.local",
       }),
     });
     expect(resp.status).toBe(200);
@@ -87,13 +87,13 @@ describe('session registration', () => {
     expect(data.success).toBe(true);
   });
 
-  it('POST /register-session with invalid ID returns 400', async () => {
+  it("POST /register-session with invalid ID returns 400", async () => {
     const resp = await fetch(`${BASE_URL}/register-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sessionId: 'not-a-uuid',
-        projectDir: '/tmp/bad',
+        sessionId: "not-a-uuid",
+        projectDir: "/tmp/bad",
       }),
     });
     expect(resp.status).toBe(400);
@@ -101,52 +101,52 @@ describe('session registration', () => {
     expect(data.error).toMatch(/session/i);
   });
 
-  it('GET /sessions shows the registered session', async () => {
+  it("GET /sessions shows the registered session", async () => {
     const resp = await fetch(`${BASE_URL}/sessions`);
     expect(resp.status).toBe(200);
     const data = await resp.json();
-    const found = data.sessions.find(s => s.sessionId === testSessionId);
+    const found = data.sessions.find((s) => s.sessionId === testSessionId);
     expect(found).toBeDefined();
-    expect(found.projectDir).toBe('/tmp/test-project');
-    expect(found.projectUrl).toBe('https://test.local');
+    expect(found.projectDir).toBe("/tmp/test-project");
+    expect(found.projectUrl).toBe("https://test.local");
   });
 
-  it('POST /unregister-session removes the session', async () => {
+  it("POST /unregister-session removes the session", async () => {
     const resp = await fetch(`${BASE_URL}/unregister-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionId: testSessionId }),
     });
     expect(resp.status).toBe(200);
 
     const sessionsResp = await fetch(`${BASE_URL}/sessions`);
     const data = await sessionsResp.json();
-    const found = data.sessions.find(s => s.sessionId === testSessionId);
+    const found = data.sessions.find((s) => s.sessionId === testSessionId);
     expect(found).toBeUndefined();
   });
 
-  it('POST /unregister-session skips deletion when processId does not match', async () => {
+  it("POST /unregister-session skips deletion when processId does not match", async () => {
     const sessionId = crypto.randomUUID();
 
     // Register with processId 'proc-1'
     await fetch(`${BASE_URL}/register-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, processId: 'proc-1', projectDir: '/tmp/guard-test' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, processId: "proc-1", projectDir: "/tmp/guard-test" }),
     });
 
     // Re-register with processId 'proc-2' (simulates new process taking over)
     await fetch(`${BASE_URL}/register-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, processId: 'proc-2', projectDir: '/tmp/guard-test' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, processId: "proc-2", projectDir: "/tmp/guard-test" }),
     });
 
     // Old process tries to unregister with 'proc-1' — should be skipped
     const unregResp = await fetch(`${BASE_URL}/unregister-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, processId: 'proc-1' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, processId: "proc-1" }),
     });
     expect(unregResp.status).toBe(200);
     const unregData = await unregResp.json();
@@ -155,22 +155,22 @@ describe('session registration', () => {
     // Session should still exist
     const sessionsResp = await fetch(`${BASE_URL}/sessions`);
     const sessionsData = await sessionsResp.json();
-    const found = sessionsData.sessions.find(s => s.sessionId === sessionId);
+    const found = sessionsData.sessions.find((s) => s.sessionId === sessionId);
     expect(found).toBeDefined();
 
     // Clean up with correct processId
     await fetch(`${BASE_URL}/unregister-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, processId: 'proc-2' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, processId: "proc-2" }),
     });
   });
 
-  it('POST /unregister-session with invalid ID returns 400', async () => {
+  it("POST /unregister-session with invalid ID returns 400", async () => {
     const resp = await fetch(`${BASE_URL}/unregister-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: 'bad-id' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "bad-id" }),
     });
     expect(resp.status).toBe(400);
   });
@@ -180,8 +180,8 @@ describe('session registration', () => {
 // Session-Scoped Data Isolation
 // ============================================
 
-describe('session-scoped data isolation', () => {
-  it('GET /status?session=<id> returns zero counts for unknown session', async () => {
+describe("session-scoped data isolation", () => {
+  it("GET /status?session=<id> returns zero counts for unknown session", async () => {
     const unknownId = crypto.randomUUID();
     const resp = await fetch(`${BASE_URL}/status?session=${unknownId}`);
     expect(resp.status).toBe(200);
@@ -190,7 +190,7 @@ describe('session-scoped data isolation', () => {
     expect(data.pendingFeedback).toBe(0);
   });
 
-  it('GET /feedback?session=<id> returns empty for unknown session', async () => {
+  it("GET /feedback?session=<id> returns empty for unknown session", async () => {
     const unknownId = crypto.randomUUID();
     const resp = await fetch(`${BASE_URL}/feedback?session=${unknownId}`);
     expect(resp.status).toBe(200);
@@ -198,10 +198,10 @@ describe('session-scoped data isolation', () => {
     expect(data.feedback).toEqual([]);
   });
 
-  it('DELETE /feedback/<id>?session=<id> returns 404 for non-existent item', async () => {
+  it("DELETE /feedback/<id>?session=<id> returns 404 for non-existent item", async () => {
     const unknownId = crypto.randomUUID();
     const resp = await fetch(`${BASE_URL}/feedback/nonexistent?session=${unknownId}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
     expect(resp.status).toBe(404);
     const data = await resp.json();
@@ -213,12 +213,12 @@ describe('session-scoped data isolation', () => {
 // Broadcast Endpoint
 // ============================================
 
-describe('broadcast endpoint', () => {
-  it('POST /broadcast with valid JSON returns 200', async () => {
+describe("broadcast endpoint", () => {
+  it("POST /broadcast with valid JSON returns 200", async () => {
     const resp = await fetch(`${BASE_URL}/broadcast?session=unmatched`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'test', message: 'hello' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "test", message: "hello" }),
     });
     expect(resp.status).toBe(200);
     const data = await resp.json();
@@ -226,11 +226,11 @@ describe('broadcast endpoint', () => {
     expect(data.clientCount).toBe(0); // No WebSocket clients connected
   });
 
-  it('POST /broadcast with invalid JSON returns 400', async () => {
+  it("POST /broadcast with invalid JSON returns 400", async () => {
     const resp = await fetch(`${BASE_URL}/broadcast?session=unmatched`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: 'not json',
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not json",
     });
     expect(resp.status).toBe(400);
   });
@@ -246,21 +246,21 @@ function connectWs(sessionId) {
       ? `ws://localhost:${TEST_PORT}/ws?session=${sessionId}`
       : `ws://localhost:${TEST_PORT}/ws`;
     const ws = new WebSocket(url);
-    ws.on('open', () => {
+    ws.on("open", () => {
       // Wait for the connected message
-      ws.once('message', (data) => {
+      ws.once("message", (data) => {
         const msg = JSON.parse(data.toString());
         resolve({ ws, msg });
       });
     });
-    ws.on('error', reject);
+    ws.on("error", reject);
   });
 }
 
 async function registerSession(sessionId, opts = {}) {
   await fetch(`${BASE_URL}/register-session`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       sessionId,
       processId: opts.processId || `proc-${sessionId.slice(0, 8)}`,
@@ -270,20 +270,20 @@ async function registerSession(sessionId, opts = {}) {
 }
 async function unregisterSession(sessionId, processId) {
   await fetch(`${BASE_URL}/unregister-session`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId, processId: processId || `proc-${sessionId.slice(0, 8)}` }),
   });
 }
 
-describe('WebSocket session routing', () => {
-  it('client with registered ?session=<uuid> stays in its bucket', async () => {
+describe("WebSocket session routing", () => {
+  it("client with registered ?session=<uuid> stays in its bucket", async () => {
     const sessionId = crypto.randomUUID();
     await registerSession(sessionId);
     const { ws, msg } = await connectWs(sessionId);
 
     try {
-      expect(msg.type).toBe('connected');
+      expect(msg.type).toBe("connected");
       expect(msg.sessionId).toBe(sessionId);
       expect(msg.sessionWarning).toBeUndefined();
       expect(msg.rebound).toBeUndefined();
@@ -297,12 +297,12 @@ describe('WebSocket session routing', () => {
     }
   });
 
-  it('client without ?session= lands in unmatched bucket, not in any UUID session', async () => {
+  it("client without ?session= lands in unmatched bucket, not in any UUID session", async () => {
     const { ws, msg } = await connectWs(null);
 
     try {
-      expect(msg.type).toBe('connected');
-      expect(msg.sessionId).toBe('unmatched');
+      expect(msg.type).toBe("connected");
+      expect(msg.sessionId).toBe("unmatched");
       expect(msg.sessionWarning).toBeDefined();
 
       // Should NOT show up in any UUID session
@@ -315,7 +315,7 @@ describe('WebSocket session routing', () => {
     }
   });
 
-  it('client with stale session ID is rebound when exactly one session is registered', async () => {
+  it("client with stale session ID is rebound when exactly one session is registered", async () => {
     // Real-world scenario: server has its own session registered (the
     // spawned test server). A stale cached widget connects with an unknown
     // UUID; the server should rebind it to the live session (Layer 2 of #46).
@@ -330,7 +330,7 @@ describe('WebSocket session routing', () => {
 
     const { ws, msg } = await connectWs(staleId);
     try {
-      expect(msg.type).toBe('connected');
+      expect(msg.type).toBe("connected");
       expect(msg.sessionId).toBe(liveSession);
       expect(msg.rebound).toEqual({ from: staleId, to: liveSession });
     } finally {
@@ -338,17 +338,17 @@ describe('WebSocket session routing', () => {
     }
   });
 
-  it('client with unknown session is rejected when multiple sessions registered', async () => {
+  it("client with unknown session is rejected when multiple sessions registered", async () => {
     const sessionA = crypto.randomUUID();
     const sessionB = crypto.randomUUID();
-    await registerSession(sessionA, { projectDir: '/tmp/multi-a' });
-    await registerSession(sessionB, { projectDir: '/tmp/multi-b' });
+    await registerSession(sessionA, { projectDir: "/tmp/multi-a" });
+    await registerSession(sessionB, { projectDir: "/tmp/multi-b" });
 
     const staleId = crypto.randomUUID();
     try {
       const { ws, msg } = await connectWs(staleId);
       try {
-        expect(msg.type).toBe('session_invalid');
+        expect(msg.type).toBe("session_invalid");
         expect(msg.providedSession).toBe(staleId);
         expect(msg.knownSessions).toEqual(expect.arrayContaining([sessionA, sessionB]));
       } finally {
@@ -360,29 +360,31 @@ describe('WebSocket session routing', () => {
     }
   });
 
-  it('client reconnecting after session migration lands in correct bucket', async () => {
+  it("client reconnecting after session migration lands in correct bucket", async () => {
     // Register session A with a projectDir, connect a WS client, submit feedback
     const sessionA = crypto.randomUUID();
     const sessionB = crypto.randomUUID();
-    const projectDir = '/tmp/migration-test-project';
+    const projectDir = "/tmp/migration-test-project";
 
     await fetch(`${BASE_URL}/register-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: sessionA, processId: 'proc-a', projectDir }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: sessionA, processId: "proc-a", projectDir }),
     });
 
     // Connect WS client to session A and submit feedback
     const { ws: wsA, msg: msgA } = await connectWs(sessionA);
     expect(msgA.sessionId).toBe(sessionA);
 
-    wsA.send(JSON.stringify({
-      type: 'feedback',
-      payload: { id: 'fb-migrate-1', description: 'Test feedback for migration' },
-    }));
+    wsA.send(
+      JSON.stringify({
+        type: "feedback",
+        payload: { id: "fb-migrate-1", description: "Test feedback for migration" },
+      }),
+    );
 
     // Wait for feedback to be stored
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
 
     // Verify feedback exists under session A
     const respA = await fetch(`${BASE_URL}/status?session=${sessionA}`);
@@ -390,13 +392,13 @@ describe('WebSocket session routing', () => {
     expect(dataA.pendingFeedback).toBe(1);
 
     wsA.close();
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
 
     // Register session B with same projectDir — should migrate feedback
     const regResp = await fetch(`${BASE_URL}/register-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: sessionB, processId: 'proc-b', projectDir }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: sessionB, processId: "proc-b", projectDir }),
     });
     expect(regResp.status).toBe(200);
 
@@ -408,18 +410,18 @@ describe('WebSocket session routing', () => {
     // Verify session A no longer exists
     const sessionsResp = await fetch(`${BASE_URL}/sessions`);
     const sessionsData = await sessionsResp.json();
-    const foundA = sessionsData.sessions.find(s => s.sessionId === sessionA);
+    const foundA = sessionsData.sessions.find((s) => s.sessionId === sessionA);
     expect(foundA).toBeUndefined();
 
     // Clean up
     await fetch(`${BASE_URL}/unregister-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: sessionB, processId: 'proc-b' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: sessionB, processId: "proc-b" }),
     });
   });
 
-  it('second client on same session triggers duplicate warning', async () => {
+  it("second client on same session triggers duplicate warning", async () => {
     const sessionId = crypto.randomUUID();
     await registerSession(sessionId);
     const { ws: ws1, msg: msg1 } = await connectWs(sessionId);
@@ -451,14 +453,14 @@ describe('WebSocket session routing', () => {
 // Orphan bucket reporting (Layer 4 of #46)
 // ============================================
 
-describe('orphan bucket reporting', () => {
-  it('GET /status exposes orphanSessions field', async () => {
+describe("orphan bucket reporting", () => {
+  it("GET /status exposes orphanSessions field", async () => {
     const resp = await fetch(`${BASE_URL}/status`);
     const data = await resp.json();
     expect(Array.isArray(data.orphanSessions)).toBe(true);
   });
 
-  it('GET /feedback exposes orphans field', async () => {
+  it("GET /feedback exposes orphans field", async () => {
     const resp = await fetch(`${BASE_URL}/feedback?session=${crypto.randomUUID()}`);
     const data = await resp.json();
     expect(Array.isArray(data.orphans)).toBe(true);

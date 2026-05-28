@@ -5,20 +5,20 @@ import crypto from "node:crypto";
 // Derive a deterministic session ID (UUID format) from the project directory.
 // Ensures reconnecting the same project reuses the same session ID.
 export function deriveSessionId(projectDir) {
-  const hash = crypto.createHash('sha256').update(projectDir).digest('hex');
+  const hash = crypto.createHash("sha256").update(projectDir).digest("hex");
   return [
     hash.slice(0, 8),
     hash.slice(8, 12),
     hash.slice(12, 16),
     hash.slice(16, 20),
     hash.slice(20, 32),
-  ].join('-');
+  ].join("-");
 }
 
 // UUID format validation for session IDs
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function isValidSessionId(id) {
-  return typeof id === 'string' && UUID_RE.test(id);
+  return typeof id === "string" && UUID_RE.test(id);
 }
 
 // Generate pending feedback summary (without full payloads)
@@ -26,11 +26,11 @@ export function getPendingSummary(pending) {
   if (!Array.isArray(pending)) pending = [];
   return {
     count: pending.length,
-    items: pending.map(f => ({
+    items: pending.map((f) => ({
       id: f.id,
       timestamp: f.timestamp || f.receivedAt,
-      description: f.description ? f.description.slice(0, 100) : '',
-      selector: f.element?.selector || '',
+      description: f.description ? f.description.slice(0, 100) : "",
+      selector: f.element?.selector || "",
     })),
   };
 }
@@ -39,67 +39,64 @@ export function getPendingSummary(pending) {
 export function detectProjectUrl(projectDir) {
   const detectionStrategies = [
     {
-      file: '.env',
+      file: ".env",
       patterns: [
         /^(?:APP_URL|BASE_URL|SITE_URL|PROJECT_URL|HOSTNAME)=["']?([^"'\s]+)["']?/m,
         /^(?:VIRTUAL_HOST|COMPOSE_DOMAIN)=["']?([^"'\s]+)["']?/m,
       ],
       transform: (match) => {
         const value = match[1];
-        if (!value.startsWith('http://') && !value.startsWith('https://')) {
+        if (!value.startsWith("http://") && !value.startsWith("https://")) {
           return `https://${value}`;
         }
         return value;
       },
     },
     {
-      file: '.env.local',
+      file: ".env.local",
       patterns: [
         /^(?:APP_URL|BASE_URL|SITE_URL|PROJECT_URL|HOSTNAME)=["']?([^"'\s]+)["']?/m,
         /^(?:VIRTUAL_HOST|COMPOSE_DOMAIN)=["']?([^"'\s]+)["']?/m,
       ],
       transform: (match) => {
         const value = match[1];
-        if (!value.startsWith('http://') && !value.startsWith('https://')) {
+        if (!value.startsWith("http://") && !value.startsWith("https://")) {
           return `https://${value}`;
         }
         return value;
       },
     },
     {
-      file: 'docker-compose.yml',
+      file: "docker-compose.yml",
       patterns: [
         /VIRTUAL_HOST[=:]\s*["']?([^"'\s]+)["']?/,
         /traefik\.http\.routers\.[^.]+\.rule[=:]\s*["']?Host\(`([^`]+)`\)["']?/,
       ],
       transform: (match) => {
         const value = match[1];
-        if (!value.startsWith('http://') && !value.startsWith('https://')) {
+        if (!value.startsWith("http://") && !value.startsWith("https://")) {
           return `https://${value}`;
         }
         return value;
       },
     },
     {
-      file: 'docker-compose.override.yml',
+      file: "docker-compose.override.yml",
       patterns: [
         /VIRTUAL_HOST[=:]\s*["']?([^"'\s]+)["']?/,
         /traefik\.http\.routers\.[^.]+\.rule[=:]\s*["']?Host\(`([^`]+)`\)["']?/,
       ],
       transform: (match) => {
         const value = match[1];
-        if (!value.startsWith('http://') && !value.startsWith('https://')) {
+        if (!value.startsWith("http://") && !value.startsWith("https://")) {
           return `https://${value}`;
         }
         return value;
       },
     },
     {
-      file: 'package.json',
-      patterns: [
-        /"homepage"\s*:\s*"([^"]+)"/,
-        /"proxy"\s*:\s*"([^"]+)"/,
-      ],
+      file: "package.json",
+      patterns: [/"homepage"\s*:\s*"([^"]+)"/, /"proxy"\s*:\s*"([^"]+)"/],
       transform: (match) => match[1],
     },
   ];
@@ -108,7 +105,7 @@ export function detectProjectUrl(projectDir) {
     const filePath = path.join(projectDir, strategy.file);
     if (fs.existsSync(filePath)) {
       try {
-        const content = fs.readFileSync(filePath, 'utf8');
+        const content = fs.readFileSync(filePath, "utf8");
         for (const pattern of strategy.patterns) {
           const match = content.match(pattern);
           if (match) {
@@ -140,7 +137,7 @@ export function formatFeedbackAsContent(items) {
       text: JSON.stringify(rest, null, 2),
     });
 
-    if (screenshot && typeof screenshot === 'string') {
+    if (screenshot && typeof screenshot === "string") {
       const match = screenshot.match(/^data:([^;]+);base64,(.+)$/);
       if (match) {
         content.push({

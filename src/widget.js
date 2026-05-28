@@ -1,6 +1,6 @@
 /**
  * Browser Feedback Widget for Claude Code
- * 
+ *
  * This widget provides a floating button that allows users to:
  * - Select elements on the page
  * - Capture screenshots
@@ -8,25 +8,25 @@
  * - Send feedback directly to Claude Code via WebSocket
  */
 
-(function() {
-  'use strict';
+(function () {
+  "use strict";
 
   // Prevent double initialization (JS-level, not DOM-level)
   if (window.__CLAUDE_FEEDBACK_WIDGET__) {
-    console.log('[Claude Feedback] Widget already initialized');
+    console.log("[Claude Feedback] Widget already initialized");
     return;
   }
   window.__CLAUDE_FEEDBACK_WIDGET__ = true;
 
-  let shadowRoot = null;    // Shadow DOM root for style isolation
+  let shadowRoot = null; // Shadow DOM root for style isolation
 
   // Configuration
   // Base WS URL is injected at serve time; the session is read from the
   // <script src=...?session=...> tag at runtime, so a cached bundle can
   // never carry a stale session ID (fix for #46).
-  const WS_BASE_URL = '__WEBSOCKET_BASE_URL__';
-  const WIDGET_VERSION = '__WIDGET_VERSION__';
-  const WIDGET_ID = 'claude-feedback-widget';
+  const WS_BASE_URL = "__WEBSOCKET_BASE_URL__";
+  const WIDGET_VERSION = "__WIDGET_VERSION__";
+  const WIDGET_ID = "claude-feedback-widget";
 
   // UUID format used by deriveSessionId on the server
   const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,14 +36,16 @@
     if (document.currentScript && document.currentScript.src) {
       candidates.push(document.currentScript.src);
     }
-    const tagged = document.getElementById('claude-feedback-widget-script');
+    const tagged = document.getElementById("claude-feedback-widget-script");
     if (tagged && tagged.src) candidates.push(tagged.src);
     for (const src of candidates) {
       try {
         const u = new URL(src, location.href);
-        const s = u.searchParams.get('session');
+        const s = u.searchParams.get("session");
         if (s && SESSION_ID_RE.test(s)) return s;
-      } catch (_) { /* fall through */ }
+      } catch (_) {
+        /* fall through */
+      }
     }
     return null;
   }
@@ -52,22 +54,21 @@
   function buildWsUrl(sessionId) {
     return sessionId ? `${WS_BASE_URL}?session=${sessionId}` : WS_BASE_URL;
   }
-  
+
   // State
   let ws = null;
   let isConnected = false;
   let isAnnotationMode = false;
   let selectedElement = null;
   let consoleLogs = [];
-  let networkErrors = [];
   let pendingItems = [];
-  let localPendingItems = [];  // Client-side storage for offline mode
+  let localPendingItems = []; // Client-side storage for offline mode
   let isPendingQueueOpen = false;
 
   // Platform detection for keyboard shortcuts
-  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-  const modifierKey = isMac ? 'metaKey' : 'ctrlKey';
-  const modifierSymbol = isMac ? '⌘' : 'Ctrl+';
+  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+  const modifierKey = isMac ? "metaKey" : "ctrlKey";
+  const modifierSymbol = isMac ? "⌘" : "Ctrl+";
 
   // Helper to get widget elements from shadow root
   function getEl(id) {
@@ -75,7 +76,7 @@
   }
 
   // References for cleanup (populated by bindEvents / startSelfHealing / connectWebSocket)
-  let _listeners = {};        // Named event listener refs from bindEvents
+  let _listeners = {}; // Named event listener refs from bindEvents
   let _selfHealObserver = null;
   let _selfHealInterval = null;
   let _wsReconnectTimeout = null;
@@ -83,7 +84,7 @@
   // ============================================
   // Console Log Capture
   // ============================================
-  
+
   const originalConsole = {
     log: console.log,
     warn: console.warn,
@@ -91,18 +92,20 @@
   };
 
   function captureConsoleLogs() {
-    ['log', 'warn', 'error'].forEach(method => {
-      console[method] = function(...args) {
+    ["log", "warn", "error"].forEach((method) => {
+      console[method] = function (...args) {
         consoleLogs.push({
           type: method,
           timestamp: new Date().toISOString(),
-          message: args.map(arg => {
-            try {
-              return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
-            } catch {
-              return String(arg);
-            }
-          }).join(' '),
+          message: args
+            .map((arg) => {
+              try {
+                return typeof arg === "object" ? JSON.stringify(arg) : String(arg);
+              } catch {
+                return String(arg);
+              }
+            })
+            .join(" "),
         });
         // Keep only last 50 logs
         if (consoleLogs.length > 50) consoleLogs.shift();
@@ -114,13 +117,13 @@
   // Capture unhandled errors
   function onWindowError(event) {
     consoleLogs.push({
-      type: 'error',
+      type: "error",
       timestamp: new Date().toISOString(),
       message: `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`,
       stack: event.error?.stack,
     });
   }
-  window.addEventListener('error', onWindowError);
+  window.addEventListener("error", onWindowError);
 
   // ============================================
   // Styles
@@ -751,17 +754,17 @@
     if (existing) existing.remove();
 
     // Create host element and attach shadow root
-    const host = document.createElement('div');
+    const host = document.createElement("div");
     host.id = WIDGET_ID;
-    shadowRoot = host.attachShadow({ mode: 'open' });
+    shadowRoot = host.attachShadow({ mode: "open" });
 
     // Inject styles into shadow root
-    const styleEl = document.createElement('style');
+    const styleEl = document.createElement("style");
     styleEl.textContent = styles;
     shadowRoot.appendChild(styleEl);
 
     // Create widget content inside shadow root
-    const container = document.createElement('div');
+    const container = document.createElement("div");
     container.innerHTML = `
       <div class="cf-root">
       <div id="${WIDGET_ID}-button-area" style="position: fixed; bottom: 20px; right: 20px; z-index: 2147483647; display: flex; flex-direction: column; align-items: flex-end; gap: 10px;">
@@ -873,24 +876,22 @@
 
   function getElementSelector(el) {
     if (el.id) return `#${el.id}`;
-    
+
     let selector = el.tagName.toLowerCase();
-    if (el.className && typeof el.className === 'string') {
-      selector += '.' + el.className.trim().split(/\s+/).join('.');
+    if (el.className && typeof el.className === "string") {
+      selector += "." + el.className.trim().split(/\s+/).join(".");
     }
-    
+
     // Add position if not unique
     const parent = el.parentElement;
     if (parent) {
-      const siblings = Array.from(parent.children).filter(
-        child => child.tagName === el.tagName
-      );
+      const siblings = Array.from(parent.children).filter((child) => child.tagName === el.tagName);
       if (siblings.length > 1) {
         const index = siblings.indexOf(el) + 1;
         selector += `:nth-of-type(${index})`;
       }
     }
-    
+
     return selector;
   }
 
@@ -910,7 +911,7 @@
       hasMore = true;
     }
 
-    return (hasMore ? '... > ' : '') + parts.join(' > ');
+    return (hasMore ? "... > " : "") + parts.join(" > ");
   }
 
   function getFullSelector(el) {
@@ -920,13 +921,13 @@
       parts.unshift(getElementSelector(current));
       current = current.parentElement;
     }
-    return parts.join(' > ');
+    return parts.join(" > ");
   }
 
   function getElementInfo(el) {
     const rect = el.getBoundingClientRect();
     const styles = window.getComputedStyle(el);
-    
+
     return {
       tagName: el.tagName.toLowerCase(),
       id: el.id || null,
@@ -970,7 +971,7 @@
   let html2canvasPromise = null;
 
   function loadHtml2Canvas() {
-    if (typeof html2canvas !== 'undefined') return Promise.resolve();
+    if (typeof html2canvas !== "undefined") return Promise.resolve();
     if (html2canvasPromise) return html2canvasPromise;
 
     // Derive HTTP URL from the WS base (same host/port)
@@ -987,16 +988,16 @@
     // Use fetch + new Function to avoid CSP script-src restrictions
     // (e.g. when loaded via browser extension on pages with strict CSP)
     html2canvasPromise = fetch(url)
-      .then(res => {
+      .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.text();
       })
-      .then(scriptText => {
+      .then((scriptText) => {
         new Function(scriptText)();
       })
-      .catch(err => {
+      .catch((err) => {
         html2canvasPromise = null;
-        throw new Error('Failed to load html2canvas: ' + (err.message || err));
+        throw new Error("Failed to load html2canvas: " + (err.message || err));
       });
 
     return html2canvasPromise;
@@ -1006,11 +1007,11 @@
     try {
       await loadHtml2Canvas();
     } catch (err) {
-      console.warn('[Claude Feedback] Could not load html2canvas:', err?.message || err);
+      console.warn("[Claude Feedback] Could not load html2canvas:", err?.message || err);
       return null;
     }
 
-    if (typeof html2canvas === 'undefined') return null;
+    if (typeof html2canvas === "undefined") return null;
 
     try {
       const widgetHost = document.getElementById(WIDGET_ID);
@@ -1031,17 +1032,17 @@
         const sw = Math.min(canvas.width - sx, rect.width + padding * 2);
         const sh = Math.min(canvas.height - sy, rect.height + padding * 2);
 
-        const cropped = document.createElement('canvas');
+        const cropped = document.createElement("canvas");
         cropped.width = sw;
         cropped.height = sh;
-        const ctx = cropped.getContext('2d');
+        const ctx = cropped.getContext("2d");
         ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-        return cropped.toDataURL('image/jpeg', 0.7);
+        return cropped.toDataURL("image/jpeg", 0.7);
       }
 
-      return canvas.toDataURL('image/jpeg', 0.7);
+      return canvas.toDataURL("image/jpeg", 0.7);
     } catch (err) {
-      console.warn('[Claude Feedback] html2canvas failed:', err?.message || err);
+      console.warn("[Claude Feedback] html2canvas failed:", err?.message || err);
       return null;
     }
   }
@@ -1053,35 +1054,35 @@
   function connectWebSocket() {
     try {
       ws = new WebSocket(buildWsUrl(currentSessionId));
-      
+
       ws.onopen = () => {
         isConnected = true;
         updateButtonState();
-        console.log('[Claude Feedback] Connected to feedback server');
+        console.log("[Claude Feedback] Connected to feedback server");
       };
-      
+
       ws.onclose = () => {
         isConnected = false;
         updateButtonState();
-        console.log('[Claude Feedback] Disconnected from feedback server');
+        console.log("[Claude Feedback] Disconnected from feedback server");
         // Reconnect after delay
         _wsReconnectTimeout = setTimeout(connectWebSocket, 3000);
       };
-      
+
       ws.onerror = (err) => {
-        console.warn('[Claude Feedback] WebSocket error:', err);
+        console.warn("[Claude Feedback] WebSocket error:", err);
       };
-      
+
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
           handleServerMessage(message);
         } catch (err) {
-          console.warn('[Claude Feedback] Error parsing message:', err);
+          console.warn("[Claude Feedback] Error parsing message:", err);
         }
       };
     } catch (err) {
-      console.warn('[Claude Feedback] Failed to connect:', err);
+      console.warn("[Claude Feedback] Failed to connect:", err);
       _wsReconnectTimeout = setTimeout(connectWebSocket, 3000);
     }
   }
@@ -1095,7 +1096,7 @@
     const diffMin = Math.floor(diffSec / 60);
     const diffHour = Math.floor(diffMin / 60);
 
-    if (diffSec < 60) return 'just now';
+    if (diffSec < 60) return "just now";
     if (diffMin < 60) return `${diffMin}m ago`;
     if (diffHour < 24) return `${diffHour}h ago`;
     return date.toLocaleDateString();
@@ -1119,21 +1120,21 @@
     const hasPending = items.length > 0;
 
     // Toggle between single button and button group
-    if (mainButton) mainButton.style.display = hasPending ? 'none' : 'flex';
-    if (buttonGroup) buttonGroup.classList.toggle('visible', hasPending);
+    if (mainButton) mainButton.style.display = hasPending ? "none" : "flex";
+    if (buttonGroup) buttonGroup.classList.toggle("visible", hasPending);
     const prevCount = pendingCount ? parseInt(pendingCount.textContent, 10) || 0 : 0;
     if (pendingCount) pendingCount.textContent = items.length;
 
     // Hide Send button when offline, show export footer when items exist
-    if (sendBtnGroup) sendBtnGroup.style.display = isConnected ? '' : 'none';
-    if (exportFooter) exportFooter.style.display = hasPending ? 'flex' : 'none';
+    if (sendBtnGroup) sendBtnGroup.style.display = isConnected ? "" : "none";
+    if (exportFooter) exportFooter.style.display = hasPending ? "flex" : "none";
 
     // Subtle bump animation when count increases
     if (pendingCount && items.length > prevCount) {
-      pendingCount.style.animation = 'none';
+      pendingCount.style.animation = "none";
       // Force reflow to restart animation
       void pendingCount.offsetWidth;
-      pendingCount.style.animation = 'countBump 0.3s ease';
+      pendingCount.style.animation = "countBump 0.3s ease";
     }
 
     // Close queue panel if no more items
@@ -1142,45 +1143,46 @@
     if (queueList) {
       // Remove existing items (but keep the empty message element and footer)
       const existingItems = queueList.querySelectorAll(`.${WIDGET_ID}-queue-item`);
-      existingItems.forEach(item => item.remove());
+      existingItems.forEach((item) => item.remove());
 
       if (items.length === 0) {
-        if (queueEmpty) queueEmpty.style.display = 'block';
+        if (queueEmpty) queueEmpty.style.display = "block";
       } else {
-        if (queueEmpty) queueEmpty.style.display = 'none';
+        if (queueEmpty) queueEmpty.style.display = "none";
 
-        items.forEach(item => {
-          const itemEl = document.createElement('div');
+        items.forEach((item) => {
+          const itemEl = document.createElement("div");
           itemEl.className = `${WIDGET_ID}-queue-item`;
           itemEl.dataset.id = item.id;
 
-          const contentEl = document.createElement('div');
+          const contentEl = document.createElement("div");
           contentEl.className = `${WIDGET_ID}-queue-item-content`;
 
-          const selectorEl = document.createElement('div');
+          const selectorEl = document.createElement("div");
           selectorEl.className = `${WIDGET_ID}-queue-item-selector`;
-          selectorEl.textContent = item.selector || item.element?.selector || 'Unknown element';
+          selectorEl.textContent = item.selector || item.element?.selector || "Unknown element";
           contentEl.appendChild(selectorEl);
 
           if (item.description) {
-            const descEl = document.createElement('div');
+            const descEl = document.createElement("div");
             descEl.className = `${WIDGET_ID}-queue-item-description`;
             descEl.textContent = item.description;
             contentEl.appendChild(descEl);
           }
 
-          const timeEl = document.createElement('div');
+          const timeEl = document.createElement("div");
           timeEl.className = `${WIDGET_ID}-queue-item-time`;
           timeEl.textContent = formatRelativeTime(item.timestamp);
           contentEl.appendChild(timeEl);
 
           itemEl.appendChild(contentEl);
 
-          const deleteBtn = document.createElement('button');
+          const deleteBtn = document.createElement("button");
           deleteBtn.className = `${WIDGET_ID}-queue-item-delete`;
-          deleteBtn.title = 'Delete this feedback';
-          deleteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
-          deleteBtn.addEventListener('click', (e) => {
+          deleteBtn.title = "Delete this feedback";
+          deleteBtn.innerHTML =
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+          deleteBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             deletePendingItem(item.id);
           });
@@ -1197,7 +1199,7 @@
     const panel = getEl(`${WIDGET_ID}-queue-panel`);
     if (panel) {
       isPendingQueueOpen = !isPendingQueueOpen;
-      panel.classList.toggle('active', isPendingQueueOpen);
+      panel.classList.toggle("active", isPendingQueueOpen);
     }
   }
 
@@ -1206,72 +1208,78 @@
     const panel = getEl(`${WIDGET_ID}-queue-panel`);
     if (panel) {
       isPendingQueueOpen = false;
-      panel.classList.remove('active');
+      panel.classList.remove("active");
     }
   }
 
   // Delete a pending item
   function deletePendingItem(id) {
     if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        type: 'delete_feedback',
-        id: id,
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "delete_feedback",
+          id: id,
+        }),
+      );
     } else {
-      localPendingItems = localPendingItems.filter(item => item.id !== id);
+      localPendingItems = localPendingItems.filter((item) => item.id !== id);
       updatePendingUI();
     }
   }
 
   function handleServerMessage(message) {
-    if (message.type === 'connected') {
+    if (message.type === "connected") {
       if (message.sessionWarning) {
-        console.warn('[Claude Feedback]', message.sessionWarning);
+        console.warn("[Claude Feedback]", message.sessionWarning);
       }
       if (message.duplicateWarning) {
-        console.warn('[Claude Feedback]', message.duplicateWarning);
+        console.warn("[Claude Feedback]", message.duplicateWarning);
       }
       if (message.rebound && message.sessionId) {
         // Server rebound us to a live session because our cached session ID
         // was stale. Adopt the new ID so subsequent reconnects use it directly.
-        console.warn(`[Claude Feedback] Session rebound: ${message.rebound.from} -> ${message.rebound.to}`);
+        console.warn(
+          `[Claude Feedback] Session rebound: ${message.rebound.from} -> ${message.rebound.to}`,
+        );
         currentSessionId = message.sessionId;
       }
-    } else if (message.type === 'session_invalid') {
+    } else if (message.type === "session_invalid") {
       // The server doesn't recognize our session ID and can't auto-rebind.
       // Try a fresh read from the script tag (extension may have refreshed it);
       // if it's still stale, prompt the user to reload.
       const fresh = resolveSessionFromScript();
       if (fresh && fresh !== currentSessionId) {
-        console.warn(`[Claude Feedback] Session refreshed from script src: ${currentSessionId} -> ${fresh}`);
+        console.warn(
+          `[Claude Feedback] Session refreshed from script src: ${currentSessionId} -> ${fresh}`,
+        );
         currentSessionId = fresh;
         // The current socket was closed by the server. Reconnect with the new ID.
         if (_wsReconnectTimeout) clearTimeout(_wsReconnectTimeout);
         _wsReconnectTimeout = setTimeout(connectWebSocket, 100);
       } else {
-        console.warn('[Claude Feedback] Session invalid:', message);
+        console.warn("[Claude Feedback] Session invalid:", message);
         showSessionInvalidBanner(message);
       }
-    } else if (message.type === 'pending_status') {
+    } else if (message.type === "pending_status") {
       // Update pending items from server
       pendingItems = message.items || [];
       updatePendingUI();
-    } else if (message.type === 'feedback_deleted') {
+    } else if (message.type === "feedback_deleted") {
       // Feedback was deleted - UI will update via pending_status broadcast
       if (message.success) {
-        console.log('[Claude Feedback] Feedback deleted:', message.id);
+        console.log("[Claude Feedback] Feedback deleted:", message.id);
       }
-    } else if (message.type === 'request_annotation') {
+    } else if (message.type === "request_annotation") {
       // Claude is asking for annotation
-      showNotification(message.message || 'Claude is requesting your feedback');
+      showNotification(message.message || "Claude is requesting your feedback");
       startAnnotationMode();
-    } else if (message.type === 'request_multiple_annotations') {
+    } else if (message.type === "request_multiple_annotations") {
       // Claude wants multiple annotations - just start annotation mode
-      showNotification(message.message || 'Claude is requesting multiple annotations');
+      showNotification(message.message || "Claude is requesting multiple annotations");
       startAnnotationMode();
-    } else if (message.type === 'feedback_received') {
+    } else if (message.type === "feedback_received") {
       showItemAdded();
-    } else if (message.type === 'sent_to_claude') {
+    } else if (message.type === "sent_to_claude") {
       showBatchSuccess(message.count);
     }
   }
@@ -1280,10 +1288,10 @@
     const button = getEl(`${WIDGET_ID}-button`);
     const shortcutHint = getEl(`${WIDGET_ID}-button-shortcut`);
     if (button) {
-      button.classList.toggle('disconnected', !isConnected);
+      button.classList.toggle("disconnected", !isConnected);
     }
     if (shortcutHint) {
-      shortcutHint.style.display = 'inline';
+      shortcutHint.style.display = "inline";
     }
   }
 
@@ -1312,79 +1320,80 @@
     const sendBtnGroup = getEl(`${WIDGET_ID}-send-btn-group`);
 
     // "+ Add" button — same as main button
-    addBtn.addEventListener('click', () => {
+    addBtn.addEventListener("click", () => {
       startAnnotationMode();
     });
 
     // "Pending" button — toggle queue panel
-    pendingBtn.addEventListener('click', () => {
+    pendingBtn.addEventListener("click", () => {
       if (pendingItems.length > 0) toggleQueuePanel();
     });
 
     // "Send" button — send to claude
-    sendBtnGroup.addEventListener('click', () => {
+    sendBtnGroup.addEventListener("click", () => {
       if (ws && ws.readyState === WebSocket.OPEN && pendingItems.length > 0) {
-        ws.send(JSON.stringify({ type: 'send_to_claude' }));
+        ws.send(JSON.stringify({ type: "send_to_claude" }));
       }
     });
 
     // Queue panel close button
-    queueCloseBtn.addEventListener('click', closeQueuePanel);
+    queueCloseBtn.addEventListener("click", closeQueuePanel);
 
     // Export Markdown button
     const exportMdBtn = getEl(`${WIDGET_ID}-export-md-btn`);
-    exportMdBtn.addEventListener('click', () => {
+    exportMdBtn.addEventListener("click", () => {
       const items = getAllPendingItems();
       if (items.length === 0) return;
       const md = generateMarkdown(items);
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      downloadFile(md, `feedback-${timestamp}.md`, 'text/markdown');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      downloadFile(md, `feedback-${timestamp}.md`, "text/markdown");
     });
 
     // Export GitHub Issue button
     const exportGhBtn = getEl(`${WIDGET_ID}-export-gh-btn`);
-    exportGhBtn.addEventListener('click', () => {
+    exportGhBtn.addEventListener("click", () => {
       const items = getAllPendingItems();
       if (items.length === 0) return;
 
-      let repo = localStorage.getItem('claude-feedback-github-repo');
+      let repo = localStorage.getItem("claude-feedback-github-repo");
       if (!repo) {
-        repo = prompt('Enter GitHub repository (owner/repo):');
-        if (!repo || !repo.includes('/')) {
-          showError('Invalid repository format. Use owner/repo.');
+        repo = prompt("Enter GitHub repository (owner/repo):");
+        if (!repo || !repo.includes("/")) {
+          showError("Invalid repository format. Use owner/repo.");
           return;
         }
-        localStorage.setItem('claude-feedback-github-repo', repo);
+        localStorage.setItem("claude-feedback-github-repo", repo);
       }
 
       const md = generateMarkdown(items);
-      const title = `Browser Feedback: ${items.length} item${items.length !== 1 ? 's' : ''} from ${new URL(items[0]?.url || window.location.href).hostname}`;
+      const title = `Browser Feedback: ${items.length} item${items.length !== 1 ? "s" : ""} from ${new URL(items[0]?.url || window.location.href).hostname}`;
 
       // Truncate body to stay within URL length limits (~6000 chars)
       const maxBodyLength = 6000;
-      const body = md.length > maxBodyLength
-        ? md.slice(0, maxBodyLength) + '\n\n... (truncated, export as Markdown for full report)'
-        : md;
+      const body =
+        md.length > maxBodyLength
+          ? md.slice(0, maxBodyLength) + "\n\n... (truncated, export as Markdown for full report)"
+          : md;
 
       const url = `https://github.com/${repo}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-      window.open(url, '_blank');
+      window.open(url, "_blank");
     });
 
     // Element info toggle
-    elementInfoToggle.addEventListener('click', () => {
-      elementInfoWrapper.classList.toggle('expanded');
+    elementInfoToggle.addEventListener("click", () => {
+      elementInfoWrapper.classList.toggle("expanded");
     });
 
     // Main button click
-    button.addEventListener('click', () => {
+    button.addEventListener("click", () => {
       startAnnotationMode();
     });
 
     // Minimize button
-    minimizeBtn.addEventListener('click', (e) => {
+    minimizeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      panel.classList.toggle('minimized');
-      minimizeBtn.textContent = panel.classList.contains('minimized') ? '+' : '−';
+      panel.classList.toggle("minimized");
+      minimizeBtn.textContent = panel.classList.contains("minimized") ? "+" : "−";
     });
 
     // Make panel draggable
@@ -1392,87 +1401,93 @@
     let dragOffsetX = 0;
     let dragOffsetY = 0;
 
-    panelHeader.addEventListener('mousedown', (e) => {
-      if (e.target.tagName === 'BUTTON') return;
+    panelHeader.addEventListener("mousedown", (e) => {
+      if (e.target.tagName === "BUTTON") return;
       isDragging = true;
       dragOffsetX = e.clientX - panel.offsetLeft;
       dragOffsetY = e.clientY - panel.offsetTop;
-      panel.style.transition = 'none';
+      panel.style.transition = "none";
     });
 
     function onDocumentMousemove(e) {
       if (!isDragging) return;
-      const x = Math.max(0, Math.min(e.clientX - dragOffsetX, window.innerWidth - panel.offsetWidth));
-      const y = Math.max(0, Math.min(e.clientY - dragOffsetY, window.innerHeight - panel.offsetHeight));
-      panel.style.left = x + 'px';
-      panel.style.top = y + 'px';
-      panel.style.right = 'auto';
+      const x = Math.max(
+        0,
+        Math.min(e.clientX - dragOffsetX, window.innerWidth - panel.offsetWidth),
+      );
+      const y = Math.max(
+        0,
+        Math.min(e.clientY - dragOffsetY, window.innerHeight - panel.offsetHeight),
+      );
+      panel.style.left = x + "px";
+      panel.style.top = y + "px";
+      panel.style.right = "auto";
     }
     _listeners.onDocumentMousemove = onDocumentMousemove;
-    document.addEventListener('mousemove', onDocumentMousemove);
+    document.addEventListener("mousemove", onDocumentMousemove);
 
     function onDocumentMouseup() {
       isDragging = false;
-      panel.style.transition = '';
+      panel.style.transition = "";
     }
     _listeners.onDocumentMouseup = onDocumentMouseup;
-    document.addEventListener('mouseup', onDocumentMouseup);
+    document.addEventListener("mouseup", onDocumentMouseup);
 
     // Keep panel in viewport on resize
     function onWindowResize() {
-      if (!panel.classList.contains('active')) return;
+      if (!panel.classList.contains("active")) return;
       const rect = panel.getBoundingClientRect();
       if (rect.right > window.innerWidth) {
-        panel.style.left = Math.max(0, window.innerWidth - panel.offsetWidth) + 'px';
-        panel.style.right = 'auto';
+        panel.style.left = Math.max(0, window.innerWidth - panel.offsetWidth) + "px";
+        panel.style.right = "auto";
       }
       if (rect.bottom > window.innerHeight) {
-        panel.style.top = Math.max(0, window.innerHeight - panel.offsetHeight) + 'px';
+        panel.style.top = Math.max(0, window.innerHeight - panel.offsetHeight) + "px";
       }
     }
     _listeners.onWindowResize = onWindowResize;
-    window.addEventListener('resize', onWindowResize);
+    window.addEventListener("resize", onWindowResize);
 
     // Overlay mouse events
-    overlay.addEventListener('mousemove', (e) => {
+    overlay.addEventListener("mousemove", (e) => {
       if (!isAnnotationMode) return;
-      
+
       // Get element under cursor (temporarily hide overlay)
-      overlay.style.pointerEvents = 'none';
+      overlay.style.pointerEvents = "none";
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      overlay.style.pointerEvents = 'auto';
-      
+      overlay.style.pointerEvents = "auto";
+
       if (el && !el.closest(`#${WIDGET_ID}`)) {
         hoveredElement = el;
         const rect = el.getBoundingClientRect();
-        
-        highlight.style.display = 'block';
-        highlight.style.top = rect.top + 'px';
-        highlight.style.left = rect.left + 'px';
-        highlight.style.width = rect.width + 'px';
-        highlight.style.height = rect.height + 'px';
-        
-        tooltip.style.display = 'block';
+
+        highlight.style.display = "block";
+        highlight.style.top = rect.top + "px";
+        highlight.style.left = rect.left + "px";
+        highlight.style.width = rect.width + "px";
+        highlight.style.height = rect.height + "px";
+
+        tooltip.style.display = "block";
         tooltip.textContent = getTruncatedSelector(el);
 
         // Position tooltip above element, or below if it would go off-screen
         if (rect.top - 40 < 0) {
-          tooltip.style.top = (rect.bottom + 8) + 'px';
+          tooltip.style.top = rect.bottom + 8 + "px";
         } else {
-          tooltip.style.top = (rect.top - 40) + 'px';
+          tooltip.style.top = rect.top - 40 + "px";
         }
 
         // Clamp horizontal position to keep tooltip on screen
         const tooltipLeft = Math.max(4, Math.min(rect.left, window.innerWidth - 308));
-        tooltip.style.left = tooltipLeft + 'px';
+        tooltip.style.left = tooltipLeft + "px";
       }
     });
 
-    overlay.addEventListener('click', (e) => {
+    overlay.addEventListener("click", (e) => {
       if (!isAnnotationMode || !hoveredElement) return;
       e.preventDefault();
       e.stopPropagation();
-      
+
       selectedElement = hoveredElement;
       stopAnnotationMode();
       showPanel();
@@ -1481,9 +1496,9 @@
     // Global keyboard shortcuts
     function onDocumentKeydown(e) {
       // Escape to cancel annotation mode or close panels
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         const panel = getEl(`${WIDGET_ID}-panel`);
-        if (panel && panel.classList.contains('active')) {
+        if (panel && panel.classList.contains("active")) {
           e.stopPropagation();
           hidePanel();
           return;
@@ -1501,16 +1516,16 @@
       }
 
       // Shift+C to start annotation mode
-      if (e.key === 'C' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === "C" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
         // Don't trigger when the feedback panel is open
         const panel = getEl(`${WIDGET_ID}-panel`);
-        if (panel && panel.classList.contains('active')) return;
+        if (panel && panel.classList.contains("active")) return;
 
         // Don't trigger when typing in input fields (including inside Shadow DOM)
         const active = document.activeElement;
         const deepActive = active?.shadowRoot?.activeElement || active;
-        const isInputFocused = ['INPUT', 'TEXTAREA'].includes(deepActive.tagName)
-          || deepActive.isContentEditable;
+        const isInputFocused =
+          ["INPUT", "TEXTAREA"].includes(deepActive.tagName) || deepActive.isContentEditable;
 
         if (!isInputFocused && !isAnnotationMode) {
           e.preventDefault();
@@ -1519,23 +1534,23 @@
       }
     }
     _listeners.onDocumentKeydown = onDocumentKeydown;
-    document.addEventListener('keydown', onDocumentKeydown);
+    document.addEventListener("keydown", onDocumentKeydown);
 
     // Prevent keyboard events from leaking to host page when widget is active
     function onShadowRootKeydown(e) {
       const panel = getEl(`${WIDGET_ID}-panel`);
-      const panelIsOpen = panel && panel.classList.contains('active');
+      const panelIsOpen = panel && panel.classList.contains("active");
       if (panelIsOpen || isAnnotationMode || isPendingQueueOpen) {
         e.stopPropagation();
       }
     }
     _listeners.onShadowRootKeydown = onShadowRootKeydown;
-    shadowRoot.addEventListener('keydown', onShadowRootKeydown);
+    shadowRoot.addEventListener("keydown", onShadowRootKeydown);
 
     // Cmd/Ctrl+Enter to send feedback from description textarea
     const descriptionTextarea = getEl(`${WIDGET_ID}-description`);
-    descriptionTextarea.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && e[modifierKey]) {
+    descriptionTextarea.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e[modifierKey]) {
         e.preventDefault();
         e.stopPropagation();
         addItem();
@@ -1543,24 +1558,24 @@
     });
 
     // Panel buttons
-    closeBtn.addEventListener('click', hidePanel);
-    cancelBtn.addEventListener('click', hidePanel);
-    sendBtn.addEventListener('click', addItem);
+    closeBtn.addEventListener("click", hidePanel);
+    cancelBtn.addEventListener("click", hidePanel);
+    sendBtn.addEventListener("click", addItem);
   }
 
   function startAnnotationMode() {
     isAnnotationMode = true;
-    getEl(`${WIDGET_ID}-overlay`).classList.add('active');
-    getEl(`${WIDGET_ID}-instructions`).classList.add('active');
+    getEl(`${WIDGET_ID}-overlay`).classList.add("active");
+    getEl(`${WIDGET_ID}-instructions`).classList.add("active");
   }
 
   function stopAnnotationMode() {
     isAnnotationMode = false;
     hoveredElement = null;
-    getEl(`${WIDGET_ID}-overlay`).classList.remove('active');
-    getEl(`${WIDGET_ID}-instructions`).classList.remove('active');
-    getEl(`${WIDGET_ID}-highlight`).style.display = 'none';
-    getEl(`${WIDGET_ID}-tooltip`).style.display = 'none';
+    getEl(`${WIDGET_ID}-overlay`).classList.remove("active");
+    getEl(`${WIDGET_ID}-instructions`).classList.remove("active");
+    getEl(`${WIDGET_ID}-highlight`).style.display = "none";
+    getEl(`${WIDGET_ID}-tooltip`).style.display = "none";
   }
 
   async function showPanel() {
@@ -1572,19 +1587,19 @@
 
     // Defensive check - ensure panel exists
     if (!panel) {
-      console.error('[Claude Feedback] Panel element not found');
+      console.error("[Claude Feedback] Panel element not found");
       return;
     }
 
     // Reset panel position and state
-    panel.style.top = '20px';
-    panel.style.right = '20px';
-    panel.style.left = 'auto';
-    panel.classList.remove('minimized');
-    if (minimizeBtn) minimizeBtn.textContent = '−';
+    panel.style.top = "20px";
+    panel.style.right = "20px";
+    panel.style.left = "auto";
+    panel.classList.remove("minimized");
+    if (minimizeBtn) minimizeBtn.textContent = "−";
 
     // Reset element info to collapsed
-    if (elementInfoWrapper) elementInfoWrapper.classList.remove('expanded');
+    if (elementInfoWrapper) elementInfoWrapper.classList.remove("expanded");
 
     // Update logs count text (preserve checkbox state)
     const logsText = getEl(`${WIDGET_ID}-include-logs-text`);
@@ -1596,7 +1611,7 @@
     if (selectedElement) {
       const info = getElementInfo(selectedElement);
       elementInfoEl.innerHTML = `
-        <strong>Selected:</strong> &lt;${info.tagName}${info.id ? ` id="${info.id}"` : ''}${info.className ? ` class="${info.className}"` : ''}&gt;<br>
+        <strong>Selected:</strong> &lt;${info.tagName}${info.id ? ` id="${info.id}"` : ""}${info.className ? ` class="${info.className}"` : ""}&gt;<br>
         <strong>Selector:</strong> ${info.selector}
       `;
     }
@@ -1604,11 +1619,11 @@
     // Show screenshot status instead of preview (screenshot is captured on submit)
     const includeScreenshotCheckbox = getEl(`${WIDGET_ID}-include-screenshot`);
     if (includeScreenshotCheckbox && includeScreenshotCheckbox.checked) {
-      screenshotEl.alt = 'Screenshot will be captured when submitted';
-      screenshotEl.removeAttribute('src');
-      screenshotEl.style.display = 'none';
+      screenshotEl.alt = "Screenshot will be captured when submitted";
+      screenshotEl.removeAttribute("src");
+      screenshotEl.style.display = "none";
     } else {
-      screenshotEl.style.display = 'none';
+      screenshotEl.style.display = "none";
     }
 
     // Show confirmed-selection highlight on the selected element
@@ -1619,31 +1634,31 @@
       highlight.style.left = `${rect.left}px`;
       highlight.style.width = `${rect.width}px`;
       highlight.style.height = `${rect.height}px`;
-      highlight.classList.add('selected');
-      highlight.style.display = 'block';
+      highlight.classList.add("selected");
+      highlight.style.display = "block";
     }
 
-    panel.classList.add('active');
+    panel.classList.add("active");
     getEl(`${WIDGET_ID}-description`).focus();
   }
 
   function hidePanel() {
-    getEl(`${WIDGET_ID}-panel`).classList.remove('active');
-    getEl(`${WIDGET_ID}-description`).value = '';
+    getEl(`${WIDGET_ID}-panel`).classList.remove("active");
+    getEl(`${WIDGET_ID}-description`).value = "";
     selectedElement = null;
     const highlight = getEl(`${WIDGET_ID}-highlight`);
-    highlight.style.display = 'none';
-    highlight.classList.remove('selected');
+    highlight.style.display = "none";
+    highlight.classList.remove("selected");
   }
 
   async function addItem() {
     // Validate we have an element selected
     if (!selectedElement) {
-      console.warn('[Claude Feedback] No element selected');
+      console.warn("[Claude Feedback] No element selected");
       return;
     }
 
-    const description = getEl(`${WIDGET_ID}-description`)?.value || '';
+    const description = getEl(`${WIDGET_ID}-description`)?.value || "";
     const includeLogs = getEl(`${WIDGET_ID}-include-logs`)?.checked ?? true;
     const includeStyles = getEl(`${WIDGET_ID}-include-styles`)?.checked ?? true;
     const includeScreenshot = getEl(`${WIDGET_ID}-include-screenshot`)?.checked ?? true;
@@ -1674,14 +1689,16 @@
     if (ws && ws.readyState === WebSocket.OPEN) {
       // Online: send via WebSocket
       try {
-        ws.send(JSON.stringify({
-          type: 'feedback',
-          payload: feedback,
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "feedback",
+            payload: feedback,
+          }),
+        );
         hidePanel();
       } catch (err) {
-        console.error('[Claude Feedback] Failed to add item:', err);
-        showError('Failed to send. Saved locally.');
+        console.error("[Claude Feedback] Failed to add item:", err);
+        showError("Failed to send. Saved locally.");
         localPendingItems.push(feedback);
         updatePendingUI();
         hidePanel();
@@ -1691,7 +1708,7 @@
       localPendingItems.push(feedback);
       updatePendingUI();
       hidePanel();
-      showSuccess('Item saved locally (offline)');
+      showSuccess("Item saved locally (offline)");
     }
   }
 
@@ -1712,7 +1729,7 @@
     items.forEach((item, i) => {
       md += `## Item ${i + 1}\n\n`;
 
-      const selector = item.selector || item.element?.selector || 'Unknown';
+      const selector = item.selector || item.element?.selector || "Unknown";
       const fullSelector = item.element?.fullSelector || selector;
       md += `**Element:** \`${selector}\`\n\n`;
       md += `**Full path:** \`${fullSelector}\`\n\n`;
@@ -1730,7 +1747,7 @@
         const styleLines = Object.entries(styles)
           .filter(([, v]) => v)
           .map(([k, v]) => `  ${k}: ${v}`)
-          .join('\n');
+          .join("\n");
         if (styleLines) {
           md += `**Computed Styles:**\n\`\`\`\n${styleLines}\n\`\`\`\n\n`;
         }
@@ -1738,7 +1755,7 @@
 
       if (item.consoleLogs && item.consoleLogs.length > 0) {
         md += `**Console Logs (${item.consoleLogs.length}):**\n\`\`\`\n`;
-        item.consoleLogs.forEach(log => {
+        item.consoleLogs.forEach((log) => {
           md += `[${log.type}] ${log.message}\n`;
         });
         md += `\`\`\`\n\n`;
@@ -1757,7 +1774,7 @@
   function downloadFile(content, filename, mimeType) {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = filename;
     // Append to document.body (not shadow root) for download to work
@@ -1771,66 +1788,78 @@
     const el = getEl(`${WIDGET_ID}-success`);
     if (el) {
       el.textContent = message;
-      el.style.display = 'block';
+      el.style.display = "block";
       setTimeout(() => {
-        el.style.display = 'none';
+        el.style.display = "none";
       }, 3000);
     }
   }
 
   function showItemAdded() {
-    showSuccess('Item added');
+    showSuccess("Item added");
   }
 
   function showBatchSuccess(count) {
-    showSuccess(`${count} item${count !== 1 ? 's' : ''} sent to Claude!`);
+    showSuccess(`${count} item${count !== 1 ? "s" : ""} sent to Claude!`);
   }
 
   function showError(message) {
     const el = getEl(`${WIDGET_ID}-error`);
     if (el) {
-      el.textContent = '✗ ' + message;
-      el.style.display = 'block';
+      el.textContent = "✗ " + message;
+      el.style.display = "block";
       setTimeout(() => {
-        el.style.display = 'none';
+        el.style.display = "none";
       }, 4000);
     } else {
       // Fallback to console if element doesn't exist
-      console.error('[Claude Feedback]', message);
+      console.error("[Claude Feedback]", message);
     }
   }
 
   function showNotification(message) {
-    console.log('[Claude Feedback]', message);
+    console.log("[Claude Feedback]", message);
   }
 
   // Visible banner shown when the server tells us our session ID is stale and
   // we can't recover automatically. Lives directly on document.body (not the
   // shadow root) so it survives even if the widget host is torn down.
   function showSessionInvalidBanner(message) {
-    const existing = document.getElementById('claude-feedback-session-invalid');
+    const existing = document.getElementById("claude-feedback-session-invalid");
     if (existing) return;
-    const banner = document.createElement('div');
-    banner.id = 'claude-feedback-session-invalid';
+    const banner = document.createElement("div");
+    banner.id = "claude-feedback-session-invalid";
     banner.style.cssText = [
-      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:2147483647',
-      'background:#b91c1c', 'color:#fff', 'padding:10px 16px',
-      'font:14px/1.4 -apple-system,system-ui,sans-serif',
-      'box-shadow:0 2px 8px rgba(0,0,0,.2)', 'display:flex',
-      'align-items:center', 'justify-content:space-between', 'gap:12px',
-    ].join(';');
-    const text = document.createElement('span');
-    text.textContent = (message && message.reason)
-      || 'Claude feedback widget: session changed. Reload the page to reconnect.';
-    const reload = document.createElement('button');
-    reload.textContent = 'Reload';
-    reload.style.cssText = 'background:#fff;color:#b91c1c;border:0;border-radius:4px;padding:6px 12px;font-weight:600;cursor:pointer';
-    reload.addEventListener('click', () => location.reload());
-    const dismiss = document.createElement('button');
-    dismiss.textContent = '✕';
-    dismiss.setAttribute('aria-label', 'Dismiss');
-    dismiss.style.cssText = 'background:transparent;color:#fff;border:0;font-size:18px;cursor:pointer;padding:0 4px';
-    dismiss.addEventListener('click', () => banner.remove());
+      "position:fixed",
+      "top:0",
+      "left:0",
+      "right:0",
+      "z-index:2147483647",
+      "background:#b91c1c",
+      "color:#fff",
+      "padding:10px 16px",
+      "font:14px/1.4 -apple-system,system-ui,sans-serif",
+      "box-shadow:0 2px 8px rgba(0,0,0,.2)",
+      "display:flex",
+      "align-items:center",
+      "justify-content:space-between",
+      "gap:12px",
+    ].join(";");
+    const text = document.createElement("span");
+    text.textContent =
+      (message && message.reason) ||
+      "Claude feedback widget: session changed. Reload the page to reconnect.";
+    const reload = document.createElement("button");
+    reload.textContent = "Reload";
+    reload.style.cssText =
+      "background:#fff;color:#b91c1c;border:0;border-radius:4px;padding:6px 12px;font-weight:600;cursor:pointer";
+    reload.addEventListener("click", () => location.reload());
+    const dismiss = document.createElement("button");
+    dismiss.textContent = "✕";
+    dismiss.setAttribute("aria-label", "Dismiss");
+    dismiss.style.cssText =
+      "background:transparent;color:#fff;border:0;font-size:18px;cursor:pointer;padding:0 4px";
+    dismiss.addEventListener("click", () => banner.remove());
     banner.append(text, reload, dismiss);
     document.body.appendChild(banner);
   }
@@ -1841,7 +1870,7 @@
 
   function ensureWidgetInDOM() {
     if (!document.getElementById(WIDGET_ID)) {
-      console.log('[Claude Feedback] Widget DOM removed, re-injecting');
+      console.log("[Claude Feedback] Widget DOM removed, re-injecting");
       createWidget();
       updateButtonState();
       updatePendingUI();
@@ -1850,7 +1879,7 @@
 
   function startSelfHealing() {
     // MutationObserver: detect when widget container is removed from body
-    _selfHealObserver = new MutationObserver((mutations) => {
+    _selfHealObserver = new MutationObserver(() => {
       // Quick check: is the widget still in the DOM?
       if (document.getElementById(WIDGET_ID)) return;
 
@@ -1899,21 +1928,21 @@
 
     // 3. Remove document/window event listeners
     if (_listeners.onDocumentMousemove) {
-      document.removeEventListener('mousemove', _listeners.onDocumentMousemove);
+      document.removeEventListener("mousemove", _listeners.onDocumentMousemove);
     }
     if (_listeners.onDocumentMouseup) {
-      document.removeEventListener('mouseup', _listeners.onDocumentMouseup);
+      document.removeEventListener("mouseup", _listeners.onDocumentMouseup);
     }
     if (_listeners.onDocumentKeydown) {
-      document.removeEventListener('keydown', _listeners.onDocumentKeydown);
+      document.removeEventListener("keydown", _listeners.onDocumentKeydown);
     }
     if (_listeners.onShadowRootKeydown && shadowRoot) {
-      shadowRoot.removeEventListener('keydown', _listeners.onShadowRootKeydown);
+      shadowRoot.removeEventListener("keydown", _listeners.onShadowRootKeydown);
     }
     if (_listeners.onWindowResize) {
-      window.removeEventListener('resize', _listeners.onWindowResize);
+      window.removeEventListener("resize", _listeners.onWindowResize);
     }
-    window.removeEventListener('error', onWindowError);
+    window.removeEventListener("error", onWindowError);
     _listeners = {};
 
     // 4. Remove widget host element (removes shadow root and all contents)
@@ -1931,14 +1960,13 @@
     delete window.__claudeFeedbackDestroy;
 
     consoleLogs = [];
-    networkErrors = [];
     pendingItems = [];
     localPendingItems = [];
     selectedElement = null;
     isAnnotationMode = false;
     isPendingQueueOpen = false;
 
-    originalConsole.log('[Claude Feedback] Widget destroyed');
+    originalConsole.log("[Claude Feedback] Widget destroyed");
   }
 
   // Expose destroy for external callers (e.g., browser extension)
@@ -1950,8 +1978,8 @@
 
   function init() {
     // Wait for DOM to be ready
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', init);
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
       return;
     }
 

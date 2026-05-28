@@ -149,20 +149,20 @@ The extension connects to the MCP server at `http://localhost:9877` by default. 
 
 ## Available MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `install_widget` | Auto-inject the widget script into your app's HTML |
-| `uninstall_widget` | Remove the widget when done |
-| `wait_for_browser_feedback` | Block until user submits single feedback |
-| `wait_for_multiple_feedback` | Wait for multiple feedback items (user clicks Done when finished) |
-| `get_pending_feedback` | Get any feedback that's been submitted |
-| `preview_pending_feedback` | Preview pending feedback summaries without consuming them |
-| `delete_pending_feedback` | Delete a specific pending feedback item by ID |
-| `get_connection_status` | Check if browser clients are connected |
-| `request_annotation` | Prompt the user to annotate something specific |
-| `get_widget_snippet` | Get the script tag for manual installation |
-| `open_in_browser` | Open project URL in default browser (auto-detects from config files) |
-| `setup_extension` | Help install the browser extension (opens folder + instructions) |
+| Tool                         | Description                                                          |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `install_widget`             | Auto-inject the widget script into your app's HTML                   |
+| `uninstall_widget`           | Remove the widget when done                                          |
+| `wait_for_browser_feedback`  | Block until user submits single feedback                             |
+| `wait_for_multiple_feedback` | Wait for multiple feedback items (user clicks Done when finished)    |
+| `get_pending_feedback`       | Get any feedback that's been submitted                               |
+| `preview_pending_feedback`   | Preview pending feedback summaries without consuming them            |
+| `delete_pending_feedback`    | Delete a specific pending feedback item by ID                        |
+| `get_connection_status`      | Check if browser clients are connected                               |
+| `request_annotation`         | Prompt the user to annotate something specific                       |
+| `get_widget_snippet`         | Get the script tag for manual installation                           |
+| `open_in_browser`            | Open project URL in default browser (auto-detects from config files) |
+| `setup_extension`            | Help install the browser extension (opens folder + instructions)     |
 
 ### install_widget Options
 
@@ -185,6 +185,7 @@ The extension connects to the MCP server at `http://localhost:9877` by default. 
 ```
 
 **Auto-detection** searches these common locations:
+
 - `index.html`
 - `public/index.html`
 - `src/index.html`
@@ -206,9 +207,9 @@ Or for development-only loading:
 
 ```html
 <script>
-  if (location.hostname === 'localhost') {
-    const s = document.createElement('script');
-    s.src = 'http://localhost:9877/widget.js';
+  if (location.hostname === "localhost") {
+    const s = document.createElement("script");
+    s.src = "http://localhost:9877/widget.js";
     document.body.appendChild(s);
   }
 </script>
@@ -231,9 +232,9 @@ Or for development-only loading:
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FEEDBACK_PORT` | `9877` | Port for HTTP/WebSocket server |
+| Variable        | Default | Description                    |
+| --------------- | ------- | ------------------------------ |
+| `FEEDBACK_PORT` | `9877`  | Port for HTTP/WebSocket server |
 
 ## Screenshot Capture
 

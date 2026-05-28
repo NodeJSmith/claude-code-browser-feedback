@@ -4,101 +4,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Browser Feedback MCP is a Model Context Protocol server that enables visual browser feedback collection directly into Claude Code. Users can point at elements in their browser and send annotated feedback (screenshots, element info, console logs) that Claude can act on.
+Browser Feedback MCP is an MCP server that injects a visual annotation widget into the browser. Users click elements, add descriptions, and Claude receives screenshots + element metadata + console logs. Being rewritten from plain JS to TypeScript and converting from pull-based MCP to push-based Claude Code channels.
 
 ## Commands
 
 ```bash
-npm install    # Install dependencies
-npm start      # Run the MCP server (node src/server.js)
-npm test       # Run tests (vitest)
-npm run test:watch  # Run tests in watch mode
+npm install          # Install dependencies
+npm start            # Run the MCP server (node src/server.js)
+npm test             # Run tests (vitest)
+npm run test:watch   # Run tests in watch mode
 ```
+
+CI runs on Node 22 (`npm ci && npm test`).
 
 ## Architecture
 
-This is a plain JavaScript (ES modules) project with no TypeScript or build step.
+Plain JavaScript (ES modules), no TypeScript or build step yet. Two large files dominate:
 
-**Main files:**
+- `src/server.js` (~2K lines) — HTTP server + WebSocket server + MCP server (stdio transport). Being split into separate modules per issue #1.
+- `src/widget.js` (~2K lines) — Browser-side annotation UI. Uses Shadow DOM for style isolation. Stays JS even after the TS conversion.
+- `src/storage.js` — Disk-backed feedback persistence with debounced writes.
+- `src/utils.js` — Helpers: `deriveSessionId`, `formatFeedback`, project URL detection.
+- `extension/` — Chrome/Firefox MV3 browser extension for toggling the widget.
 
-- `src/server.js` - MCP server combining:
-  - HTTP server (serves widget.js, handles /status endpoint)
-  - WebSocket server (real-time browser ↔ server communication)
-  - MCP server (stdio transport for Claude Code integration)
+### Key patterns
 
-- `src/widget.js` - Browser-side widget that:
-  - Injects UI for element selection and feedback submission
-  - Uses Shadow DOM for style isolation from host page CSS
-  - Captures console logs, screenshots (via html2canvas if available), and element metadata
-  - Communicates with server via WebSocket (works offline with local storage fallback)
-  - Supports export to Markdown file and GitHub Issue (URL-based, no token)
-  - `__WEBSOCKET_URL__` placeholder is replaced at serve-time with actual WebSocket URL
-  - Exposes `window.__claudeFeedbackDestroy()` for clean teardown (used by the browser extension)
-  - Internal DOM access uses `getEl()` helper (queries shadow root, not document)
+- `__WEBSOCKET_BASE_URL__` and `__WIDGET_VERSION__` placeholders in widget.js are replaced at serve-time by the HTTP server.
+- Widget internal DOM access uses `getEl()` helper (queries shadow root, not `document`).
+- `window.__claudeFeedbackDestroy()` handles clean teardown (used by the browser extension).
+- Session isolation: deterministic UUID derived from `process.cwd()`. All storage, WebSocket broadcasts, and MCP responses are partitioned by session ID.
+- Multi-process: first process owns the HTTP server port; subsequent processes register via `POST /register-session` and run in proxy mode.
 
-- `extension/` - Chrome/Firefox MV3 browser extension:
-  - `manifest.json` - Single manifest for both browsers
-  - `background.js` - Service worker tracking per-tab state, badge, and session auto-matching
-  - `content.js` - Injects/removes widget via `<script src>` tag (with session ID in URL)
-  - `popup/` - Toggle UI with connection status, server URL config, and session picker
+## Active Rewrite (3 epics)
 
-**Session isolation:**
-Each Claude Code process generates a unique `SESSION_ID` (UUID). All feedback storage, WebSocket broadcasts, and MCP tool responses are partitioned by session ID. This prevents feedback from one project appearing in another.
+Work these in order — each depends on the previous:
 
-- First process binds the port and becomes the HTTP server owner
-- Subsequent processes register via `POST /register-session` and run in proxy mode
-- Widget URL includes `?session=<id>` which tags the WebSocket connection
-- Extension auto-matches tabs to sessions by comparing tab origin against detected project URLs
-- When multiple sessions exist and auto-match fails, extension popup shows a session picker
-- `GET /sessions` returns all registered sessions with project metadata
-- Connections without a session param are placed in the `'unmatched'` bucket with a warning — they will not be visible to any MCP session
+1. **#1 TypeScript conversion + code quality** — Convert server-side to TS (strict mode), add ESLint, bind to `127.0.0.1` (not `0.0.0.0`), split the god files, replace 26+ silent catch blocks, extract magic numbers into constants.
 
-**Data flow (online):**
-1. Widget injected into user's web app (via `install_widget` tool, manual script tag, or browser extension)
-2. User selects element and submits feedback
-3. Widget sends feedback via WebSocket to server (tagged with session ID)
-4. Server stores feedback in session-scoped queue and resolves session-specific `wait_for_browser_feedback` promises
-5. Claude receives structured feedback (element info, screenshot, console logs, description)
+2. **#2 Convert to Claude Code channels** — Add `experimental.claude/channel` capability. Push feedback via `mcp.notification()` instead of polling. Save screenshots to disk, include file path in channel message. Delete pull-based tools (`wait_for_browser_feedback`, `get_pending_feedback`, etc.), keep on-demand tools (`install_widget`, `get_connection_status`, `request_annotation`, etc.). Add sender gating for prompt injection prevention.
 
-**Data flow (offline):**
-1. Widget works without server connection — annotation stored in `localPendingItems`
-2. User exports via Markdown download or GitHub Issue URL from queue panel
-
-## MCP Tools
-
-| Tool | Purpose |
-|------|---------|
-| `install_widget` | Auto-inject widget script into HTML file. Supports `allowed_hostnames` parameter for custom dev domains (e.g., `*.local.itkdev.dk`) |
-| `uninstall_widget` | Remove widget script from HTML file |
-| `wait_for_browser_feedback` | Block until user submits feedback (default 5min timeout) |
-| `get_pending_feedback` | Get already-submitted feedback without blocking |
-| `get_connection_status` | Check WebSocket client connections |
-| `request_annotation` | Broadcast prompt to connected browsers asking user to annotate |
-| `get_widget_snippet` | Get manual installation script tag |
-| `open_in_browser` | Open project URL in default browser (auto-detects from .env, docker-compose.yml, etc.) |
-| `setup_extension` | Open extension directory and show Chrome/Firefox install instructions |
-
-### install_widget Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `file_path` | string | auto-detect | Path to HTML file to inject widget into |
-| `project_dir` | string | cwd | Project directory to search for HTML files |
-| `dev_only` | boolean | true | Only load widget on allowed hostnames |
-| `allowed_hostnames` | array | see below | List of hostnames/patterns allowed when `dev_only` is true |
-
-**Default `allowed_hostnames` patterns:**
-- `localhost`, `127.0.0.1` - Standard localhost
-- `*.local` - macOS .local domains
-- `*.local.*` - Custom local subdomains (e.g., `app.local.example.dk`)
-- `*.test`, `*.dev` - Common dev TLDs
-- `*.ddev.site` - DDEV local development
-
-**Pattern syntax:** Use `*` as wildcard to match any characters (including dots for multi-segment matches). Examples:
-- `myapp.local.itkdev.dk` - Exact match
-- `*.local.itkdev.dk` - Matches any subdomain of local.itkdev.dk (e.g., `app.local.itkdev.dk`)
-- `*.local.*` - Matches any domain with .local. in it (e.g., `app.local.example.dk`, `foo.local.bar.baz`)
+3. **#3 Testing backfill** — Widget has zero test coverage. Backfill widget tests, update existing tests for channels architecture, add coverage enforcement (80%+ target).
 
 ## Configuration
 
-Environment variable `FEEDBACK_PORT` (default: 9877) controls the HTTP/WebSocket server port.
+- `FEEDBACK_PORT` (default: 9877) — HTTP/WebSocket server port.
+- `FEEDBACK_HOST` — planned in #1 to make bind address configurable (currently hardcoded to `0.0.0.0`).

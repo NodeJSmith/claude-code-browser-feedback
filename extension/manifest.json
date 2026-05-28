@@ -3,14 +3,8 @@
   "name": "Claude Code Browser Feedback",
   "version": "1.0.0",
   "description": "Toggle the Claude Code feedback widget on any browser tab without modifying project files.",
-  "permissions": [
-    "activeTab",
-    "storage",
-    "scripting"
-  ],
-  "host_permissions": [
-    "http://localhost/*"
-  ],
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["http://localhost/*"],
   "background": {
     "service_worker": "background.js",
     "scripts": ["background.js"]
