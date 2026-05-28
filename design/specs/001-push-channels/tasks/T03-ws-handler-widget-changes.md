@@ -1,7 +1,7 @@
 ---
 task_id: "T03"
 title: "Convert WS send_to_claude handler and add widget push support"
-status: "planned"
+status: "done"
 depends_on: ["T02"]
 implements: ["FR#3", "AC#2"]
 ---

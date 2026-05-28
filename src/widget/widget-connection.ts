@@ -5,11 +5,13 @@ import {
   isConnected,
   ws,
   pendingItems,
+  localPendingItems,
   getEl,
   setWs,
   setIsConnected,
   setCurrentSessionId,
   setPendingItems,
+  setLocalPendingItems,
   setWsReconnectTimeout,
   _wsReconnectTimeout,
 } from "./widget-state.ts";
@@ -64,6 +66,16 @@ export function connectWebSocket(): void {
       setIsConnected(true);
       updateButtonState();
       console.log("[Claude Feedback] Connected to feedback server");
+      if (localPendingItems.length > 0) {
+        try {
+          for (const item of localPendingItems) {
+            socket.send(JSON.stringify({ type: "feedback", payload: item }));
+          }
+          setLocalPendingItems([]);
+        } catch (err) {
+          console.warn("[Claude Feedback] Failed to flush pending items on reconnect:", err);
+        }
+      }
     };
 
     socket.onclose = () => {
@@ -136,6 +148,8 @@ function handleServerMessage(message: Record<string, unknown>): void {
     handlers?.onItemAdded();
   } else if (message.type === "sent_to_claude") {
     handlers?.onBatchSent(message.count as number);
+  } else if (message.type === "push_failed") {
+    handlers?.onError((message.reason as string) || "Failed to send feedback to Claude");
   }
 }
 

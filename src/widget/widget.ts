@@ -174,7 +174,7 @@ if (!window.__CLAUDE_FEEDBACK_WIDGET__) {
     onItemAdded: () => showItemAdded(),
     onBatchSent: (count) => showBatchSuccess(count),
     onNotification: (msg) => showNotification(msg),
-    onError: () => {},
+    onError: (msg) => showNotification(msg || "Failed to send feedback to Claude"),
   });
 
   function init() {

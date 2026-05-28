@@ -17,6 +17,7 @@ import {
   setShadowRoot,
   setCurrentSessionId,
   setWsReconnectTimeout,
+  setLocalPendingItems,
   resetState,
 } from "../src/widget/widget-state.ts";
 
@@ -296,7 +297,48 @@ describe("message dispatch via connectWebSocket", () => {
     expect(handlers.onBatchSent).toHaveBeenCalledWith(3);
   });
 
+  it("calls onError with reason on 'push_failed'", () => {
+    dispatch(socket, { type: "push_failed", reason: "Claude disconnected" });
+    expect(handlers.onError).toHaveBeenCalledWith("Claude disconnected");
+  });
+
+  it("calls onError with default message on 'push_failed' without reason", () => {
+    dispatch(socket, { type: "push_failed" });
+    expect(handlers.onError).toHaveBeenCalledWith("Failed to send feedback to Claude");
+  });
+
   it("does not throw on malformed JSON", () => {
     expect(() => socket.onmessage!({ data: "not json" })).not.toThrow();
+  });
+});
+
+describe("reconnect flush", () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("flushes localPendingItems on open and clears the list", () => {
+    const { socket, restore } = setupMockWebSocket();
+    try {
+      const item1 = { id: "a", description: "first" } as unknown as import("../src/widget/widget-state.ts").FeedbackItem;
+      const item2 = { id: "b", description: "second" } as unknown as import("../src/widget/widget-state.ts").FeedbackItem;
+      setLocalPendingItems([item1, item2]);
+
+      connectWebSocket();
+      socket.onopen!({});
+
+      expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "feedback", payload: item1 }));
+      expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "feedback", payload: item2 }));
+      expect(state.localPendingItems).toHaveLength(0);
+    } finally { restore(); }
+  });
+
+  it("sends nothing when localPendingItems is empty on open", () => {
+    const { socket, restore } = setupMockWebSocket();
+    try {
+      setLocalPendingItems([]);
+      connectWebSocket();
+      socket.onopen!({});
+
+      expect(socket.send).not.toHaveBeenCalled();
+    } finally { restore(); }
   });
 });
