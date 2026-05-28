@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Build output
+dist/
+
 # Claude Code
 .claude/
 .mcp.json

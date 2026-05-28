@@ -17,8 +17,8 @@ import {
   getPendingSummary,
   detectProjectUrl,
   formatFeedbackAsContent,
-} from "./utils.js";
-import * as storage from "./storage.js";
+} from "./utils.ts";
+import * as storage from "./storage.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

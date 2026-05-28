@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import path from "path";
-import * as storage from "../src/storage.js";
-import { deriveSessionId } from "../src/utils.js";
+import * as storage from "../src/storage.ts";
+import { deriveSessionId } from "../src/utils.ts";
 
 function makeSessionId(seed) {
   return deriveSessionId(`/tmp/storage-test-${seed}-${Date.now()}-${Math.random()}`);

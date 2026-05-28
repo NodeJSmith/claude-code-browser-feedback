@@ -1,17 +1,11 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { isValidSessionId } from "./utils.js";
+import { isValidSessionId } from "./utils.ts";
 
-// Disk location for per-session feedback queues. Tmp dir is deliberate:
-// it survives the server process (so crashes/restarts don't lose data)
-// but doesn't pollute the user's home or the project tree.
 const ROOT = path.join(os.tmpdir(), "claude-browser-feedback");
 
-// `mode` only applies on first creation. If ROOT was created by an older
-// version without the mode arg, the permissions stay whatever they were —
-// usually fine because the OS clears tmp on reboot.
-function ensureRoot() {
+function ensureRoot(): void {
   try {
     fs.mkdirSync(ROOT, { recursive: true, mode: 0o700 });
   } catch {
@@ -19,16 +13,20 @@ function ensureRoot() {
   }
 }
 
-function fileFor(sessionId) {
+function fileFor(sessionId: string): string {
   return path.join(ROOT, `${sessionId}.json`);
 }
 
-export function getStorageDir() {
+export function getStorageDir(): string {
   return ROOT;
 }
 
-// Synchronous load — small payloads, called rarely (boot + first access).
-export function load(sessionId) {
+interface StorageState {
+  pending: unknown[];
+  ready: unknown[];
+}
+
+export function load(sessionId: string): StorageState {
   if (!isValidSessionId(sessionId)) return { pending: [], ready: [] };
   try {
     const raw = fs.readFileSync(fileFor(sessionId), "utf8");
@@ -42,12 +40,15 @@ export function load(sessionId) {
   }
 }
 
-// Debounced write-through. Mutations on `pending` / `ready` are coalesced
-// per session into a single atomic rename so we never tear a file mid-write.
-const pendingWrites = new Map(); // sessionId -> { timer, state }
+interface WriteEntry {
+  timer?: ReturnType<typeof setTimeout>;
+  state?: StorageState & { updatedAt: string };
+}
+
+const pendingWrites = new Map<string, WriteEntry>();
 const WRITE_DELAY_MS = 50;
 
-export function save(sessionId, state) {
+export function save(sessionId: string, state: StorageState): void {
   if (!isValidSessionId(sessionId)) return;
   const entry = pendingWrites.get(sessionId) || {};
   entry.state = {
@@ -60,7 +61,7 @@ export function save(sessionId, state) {
   pendingWrites.set(sessionId, entry);
 }
 
-export function flush(sessionId) {
+export function flush(sessionId: string): void {
   const entry = pendingWrites.get(sessionId);
   if (!entry || !entry.state) return;
   pendingWrites.delete(sessionId);
@@ -71,15 +72,17 @@ export function flush(sessionId) {
     fs.writeFileSync(tmp, JSON.stringify(entry.state), { encoding: "utf8", mode: 0o600 });
     fs.renameSync(tmp, target);
   } catch (err) {
-    console.error(`[browser-feedback-mcp] storage flush failed for ${sessionId}: ${err.message}`);
+    console.error(
+      `[browser-feedback-mcp] storage flush failed for ${sessionId}: ${(err as Error).message}`,
+    );
   }
 }
 
-export function flushAll() {
+export function flushAll(): void {
   for (const sid of Array.from(pendingWrites.keys())) flush(sid);
 }
 
-export function remove(sessionId) {
+export function remove(sessionId: string): void {
   if (!isValidSessionId(sessionId)) return;
   const entry = pendingWrites.get(sessionId);
   if (entry && entry.timer) clearTimeout(entry.timer);
@@ -91,16 +94,15 @@ export function remove(sessionId) {
   }
 }
 
-// Enumerate persisted sessions on disk. Used to rehydrate on boot.
-export function listSessions() {
+export function listSessions(): string[] {
   ensureRoot();
-  let names;
+  let names: string[];
   try {
     names = fs.readdirSync(ROOT);
   } catch {
     return [];
   }
-  const out = [];
+  const out: string[] = [];
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
     const sid = name.slice(0, -5);

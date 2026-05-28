@@ -8,7 +8,7 @@ import {
   getPendingSummary,
   detectProjectUrl,
   formatFeedbackAsContent,
-} from "../src/utils.js";
+} from "../src/utils.ts";
 
 // ============================================
 // deriveSessionId

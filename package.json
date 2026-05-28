@@ -8,7 +8,8 @@
     "browser-feedback-mcp": "./src/server.js"
   },
   "scripts": {
-    "start": "node src/server.js",
+    "typecheck": "tsc",
+    "start": "node --experimental-strip-types src/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -43,10 +44,13 @@
   "license": "MIT",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^25.9.1",
+    "@types/ws": "^8.18.1",
     "eslint": "^10.4.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.6.0",
     "prettier": "^3.8.3",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.4"
   }
 }

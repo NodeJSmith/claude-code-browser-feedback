@@ -2,31 +2,37 @@ import fs from "fs";
 import path from "path";
 import crypto from "node:crypto";
 
-// Derive a deterministic session ID (UUID format) from the project directory.
-// Ensures reconnecting the same project reuses the same session ID.
-export function deriveSessionId(projectDir) {
+export function deriveSessionId(projectDir: string): string {
   const hash = crypto.createHash("sha256").update(projectDir).digest("hex");
-  return [
-    hash.slice(0, 8),
-    hash.slice(8, 12),
-    hash.slice(12, 16),
-    hash.slice(16, 20),
-    hash.slice(20, 32),
-  ].join("-");
+  return [hash.slice(0, 8), hash.slice(8, 12), hash.slice(12, 16), hash.slice(16, 20), hash.slice(20, 32)].join("-");
 }
 
-// UUID format validation for session IDs
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export function isValidSessionId(id) {
+
+export function isValidSessionId(id: unknown): id is string {
   return typeof id === "string" && UUID_RE.test(id);
 }
 
-// Generate pending feedback summary (without full payloads)
-export function getPendingSummary(pending) {
-  if (!Array.isArray(pending)) pending = [];
+interface PendingItem {
+  id: string;
+  timestamp?: string;
+  receivedAt?: string;
+  description?: string;
+  element?: { selector?: string };
+  screenshot?: string;
+  [key: string]: unknown;
+}
+
+interface PendingSummary {
+  count: number;
+  items: { id: string; timestamp: string | undefined; description: string; selector: string }[];
+}
+
+export function getPendingSummary(pending: PendingItem[] | unknown): PendingSummary {
+  const items = Array.isArray(pending) ? pending : [];
   return {
-    count: pending.length,
-    items: pending.map((f) => ({
+    count: items.length,
+    items: items.map((f: PendingItem) => ({
       id: f.id,
       timestamp: f.timestamp || f.receivedAt,
       description: f.description ? f.description.slice(0, 100) : "",
@@ -35,22 +41,33 @@ export function getPendingSummary(pending) {
   };
 }
 
-// Detect project URL from configuration files
-export function detectProjectUrl(projectDir) {
-  const detectionStrategies = [
+interface DetectionStrategy {
+  file: string;
+  patterns: RegExp[];
+  transform: (match: RegExpMatchArray) => string;
+}
+
+interface DetectionResult {
+  url: string | null;
+  detectedFrom: string | null;
+}
+
+function ensureUrl(value: string): string {
+  if (!value.startsWith("http://") && !value.startsWith("https://")) {
+    return `https://${value}`;
+  }
+  return value;
+}
+
+export function detectProjectUrl(projectDir: string): DetectionResult {
+  const detectionStrategies: DetectionStrategy[] = [
     {
       file: ".env",
       patterns: [
         /^(?:APP_URL|BASE_URL|SITE_URL|PROJECT_URL|HOSTNAME)=["']?([^"'\s]+)["']?/m,
         /^(?:VIRTUAL_HOST|COMPOSE_DOMAIN)=["']?([^"'\s]+)["']?/m,
       ],
-      transform: (match) => {
-        const value = match[1];
-        if (!value.startsWith("http://") && !value.startsWith("https://")) {
-          return `https://${value}`;
-        }
-        return value;
-      },
+      transform: (match) => ensureUrl(match[1]),
     },
     {
       file: ".env.local",
@@ -58,13 +75,7 @@ export function detectProjectUrl(projectDir) {
         /^(?:APP_URL|BASE_URL|SITE_URL|PROJECT_URL|HOSTNAME)=["']?([^"'\s]+)["']?/m,
         /^(?:VIRTUAL_HOST|COMPOSE_DOMAIN)=["']?([^"'\s]+)["']?/m,
       ],
-      transform: (match) => {
-        const value = match[1];
-        if (!value.startsWith("http://") && !value.startsWith("https://")) {
-          return `https://${value}`;
-        }
-        return value;
-      },
+      transform: (match) => ensureUrl(match[1]),
     },
     {
       file: "docker-compose.yml",
@@ -72,13 +83,7 @@ export function detectProjectUrl(projectDir) {
         /VIRTUAL_HOST[=:]\s*["']?([^"'\s]+)["']?/,
         /traefik\.http\.routers\.[^.]+\.rule[=:]\s*["']?Host\(`([^`]+)`\)["']?/,
       ],
-      transform: (match) => {
-        const value = match[1];
-        if (!value.startsWith("http://") && !value.startsWith("https://")) {
-          return `https://${value}`;
-        }
-        return value;
-      },
+      transform: (match) => ensureUrl(match[1]),
     },
     {
       file: "docker-compose.override.yml",
@@ -86,13 +91,7 @@ export function detectProjectUrl(projectDir) {
         /VIRTUAL_HOST[=:]\s*["']?([^"'\s]+)["']?/,
         /traefik\.http\.routers\.[^.]+\.rule[=:]\s*["']?Host\(`([^`]+)`\)["']?/,
       ],
-      transform: (match) => {
-        const value = match[1];
-        if (!value.startsWith("http://") && !value.startsWith("https://")) {
-          return `https://${value}`;
-        }
-        return value;
-      },
+      transform: (match) => ensureUrl(match[1]),
     },
     {
       file: "package.json",
@@ -115,7 +114,7 @@ export function detectProjectUrl(projectDir) {
             };
           }
         }
-      } catch (err) {
+      } catch {
         // Continue to next strategy
       }
     }
@@ -124,12 +123,24 @@ export function detectProjectUrl(projectDir) {
   return { url: null, detectedFrom: null };
 }
 
-// Format feedback items as MCP content blocks with ImageContent for screenshots
-export function formatFeedbackAsContent(items) {
-  if (!Array.isArray(items)) items = [items];
+interface TextContent {
+  type: "text";
+  text: string;
+}
 
-  const content = [];
-  for (const item of items) {
+interface ImageContent {
+  type: "image";
+  data: string;
+  mimeType: string;
+}
+
+type ContentBlock = TextContent | ImageContent;
+
+export function formatFeedbackAsContent(items: PendingItem | PendingItem[]): ContentBlock[] {
+  const list = Array.isArray(items) ? items : [items];
+
+  const content: ContentBlock[] = [];
+  for (const item of list) {
     const { screenshot, ...rest } = item;
 
     content.push({
@@ -149,10 +160,10 @@ export function formatFeedbackAsContent(items) {
     }
   }
 
-  if (items.length > 1) {
+  if (list.length > 1) {
     content.unshift({
       type: "text",
-      text: `Received ${items.length} feedback item(s):`,
+      text: `Received ${list.length} feedback item(s):`,
     });
   }
 

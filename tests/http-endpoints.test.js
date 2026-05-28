@@ -26,7 +26,7 @@ async function waitForServer(maxRetries = 20, delay = 250) {
 }
 
 beforeAll(async () => {
-  serverProcess = spawn("node", [SERVER_PATH], {
+  serverProcess = spawn("node", ["--experimental-strip-types", SERVER_PATH], {
     env: { ...process.env, FEEDBACK_PORT: String(TEST_PORT) },
     stdio: ["pipe", "pipe", "pipe"],
   });
