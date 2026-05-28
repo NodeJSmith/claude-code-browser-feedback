@@ -17,7 +17,7 @@ import {
   setSessionReady,
 } from "./session-store.ts";
 import { createProxyClient } from "./proxy-client.ts";
-import { createHttpServer } from "./http-server.js";
+import { createHttpServer } from "./http-server.ts";
 import { createWsServer } from "./ws-server.js";
 import { registerMcpHandlers } from "./mcp-tools.js";
 

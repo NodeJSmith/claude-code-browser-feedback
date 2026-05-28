@@ -19,7 +19,7 @@ import {
   findOrphanBuckets,
   migrateOrphanInto,
 } from "./session-store.ts";
-import { broadcastPendingStatus } from "./http-server.js";
+import { broadcastPendingStatus } from "./http-server.ts";
 
 export function registerMcpHandlers({ mcpServer, port, sessionId, srcDir, proxy, broadcast }) {
 

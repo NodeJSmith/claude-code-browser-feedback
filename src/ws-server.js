@@ -11,7 +11,7 @@ import {
   getSessionResolvers,
   getSessionClients,
 } from "./session-store.ts";
-import { broadcastPendingStatus } from "./http-server.js";
+import { broadcastPendingStatus } from "./http-server.ts";
 
 export function createWsServer({ httpServer, port }) {
   const wss = new WebSocketServer({ server: httpServer, path: "/ws", clientTracking: true });

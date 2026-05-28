@@ -19,10 +19,10 @@ import {
   deleteSession,
 } from "./session-store.ts";
 
-function parseJsonBody(req) {
+function parseJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let body = "";
-    req.on("data", (chunk) => {
+    req.on("data", (chunk: Buffer) => {
       body += chunk;
     });
     req.on("end", () => {
@@ -35,7 +35,7 @@ function parseJsonBody(req) {
   });
 }
 
-export function broadcastPendingStatus(sessionId) {
+export function broadcastPendingStatus(sessionId: string): void {
   const status = getPendingSummary(getSessionPending(sessionId));
   const message = JSON.stringify({ type: "pending_status", ...status });
   for (const client of getSessionClients(sessionId)) {
@@ -45,7 +45,13 @@ export function broadcastPendingStatus(sessionId) {
   }
 }
 
-export function createHttpServer({ port, pkgVersion, srcDir }) {
+interface HttpServerOptions {
+  port: number;
+  pkgVersion: string;
+  srcDir: string;
+}
+
+export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions) {
   const httpServer = http.createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
@@ -57,7 +63,7 @@ export function createHttpServer({ port, pkgVersion, srcDir }) {
       return;
     }
 
-    const urlObj = new URL(req.url, `http://localhost:${port}`);
+    const urlObj = new URL(req.url!, `http://localhost:${port}`);
 
     if (urlObj.pathname === "/widget.js") {
       const widgetPath = path.join(srcDir, "widget.js");
@@ -135,9 +141,8 @@ export function createHttpServer({ port, pkgVersion, srcDir }) {
       if (shouldClear) {
         setSessionReady(sessionId, []);
       }
-      let orphans = [];
+      let orphans = findOrphanBuckets();
       if (feedback.length === 0 && isValidSessionId(sessionId) && sessionRegistry.has(sessionId)) {
-        orphans = findOrphanBuckets();
         if (orphans.length > 0 && sessionRegistry.size === 1) {
           for (const o of orphans) {
             console.error(
@@ -154,6 +159,8 @@ export function createHttpServer({ port, pkgVersion, srcDir }) {
           }
           orphans = [];
         }
+      } else {
+        orphans = [];
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ feedback, orphans }));
@@ -171,7 +178,7 @@ export function createHttpServer({ port, pkgVersion, srcDir }) {
     if (deleteMatch && req.method === "DELETE") {
       const idToDelete = deleteMatch[1];
       const sessionId = urlObj.searchParams.get("session") || "unmatched";
-      const pending = getSessionPending(sessionId);
+      const pending = getSessionPending(sessionId) as { id?: string }[];
       const initialLength = pending.length;
       setSessionPending(
         sessionId,
@@ -234,35 +241,35 @@ export function createHttpServer({ port, pkgVersion, srcDir }) {
             if (existingId !== data.sessionId && existingMeta.projectDir === data.projectDir) {
               const oldPending = getSessionPending(existingId);
               if (oldPending.length > 0) {
-                getSessionPending(data.sessionId).push(...oldPending);
+                getSessionPending(data.sessionId as string).push(...oldPending);
               }
               const oldReady = getSessionReady(existingId);
               if (oldReady.length > 0) {
-                getSessionReady(data.sessionId).push(...oldReady);
+                getSessionReady(data.sessionId as string).push(...oldReady);
               }
               const oldClients = getSessionClients(existingId);
               if (oldClients.size > 0) {
-                const newClients = getSessionClients(data.sessionId);
+                const newClients = getSessionClients(data.sessionId as string);
                 for (const client of oldClients) {
-                  client._sessionId = data.sessionId;
+                  (client as unknown as { _sessionId: string })._sessionId = data.sessionId as string;
                   newClients.add(client);
                 }
               }
               deleteSession(existingId);
               sessionRegistry.delete(existingId);
               storage.remove(existingId);
-              persistSession(data.sessionId);
+              persistSession(data.sessionId as string);
               console.error(
                 `[browser-feedback-mcp] Migrated session data: ${existingId} -> ${data.sessionId}`,
               );
             }
           }
-          sessionRegistry.set(data.sessionId, {
-            sessionId: data.sessionId,
-            processId: data.processId || null,
-            projectDir: data.projectDir,
-            projectUrl: data.projectUrl || null,
-            detectedFrom: data.detectedFrom || null,
+          sessionRegistry.set(data.sessionId as string, {
+            sessionId: data.sessionId as string,
+            processId: (data.processId as string) || null,
+            projectDir: data.projectDir as string,
+            projectUrl: (data.projectUrl as string) || null,
+            detectedFrom: (data.detectedFrom as string) || null,
             registeredAt: new Date().toISOString(),
           });
           console.error(
@@ -286,7 +293,7 @@ export function createHttpServer({ port, pkgVersion, srcDir }) {
             res.end(JSON.stringify({ error: "Invalid session ID format" }));
             return;
           }
-          const existing = sessionRegistry.get(data.sessionId);
+          const existing = sessionRegistry.get(data.sessionId as string);
           if (
             existing &&
             data.processId &&
@@ -300,8 +307,8 @@ export function createHttpServer({ port, pkgVersion, srcDir }) {
             res.end(JSON.stringify({ success: true, skipped: true }));
             return;
           }
-          sessionRegistry.delete(data.sessionId);
-          deleteSession(data.sessionId);
+          sessionRegistry.delete(data.sessionId as string);
+          deleteSession(data.sessionId as string);
           console.error(`[browser-feedback-mcp] Session unregistered: ${data.sessionId}`);
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: true }));
