@@ -7,19 +7,14 @@ implements: ["FR#10", "AC#7"]
 ---
 
 ## Summary
-Remove the three pull-based HTTP endpoints, add the authenticated `POST /push-notification` proxy relay endpoint, harden `parseJsonBody`, and update `proxy-client.ts` to replace polling methods with the new push relay. After this task, proxy instances (secondary MCP processes sharing the same port) can relay feedback through the owner for notification delivery.
+Add the authenticated `POST /push-notification` proxy relay endpoint, harden `parseJsonBody`, and update `proxy-client.ts` to replace polling methods with the new push relay. After this task, proxy instances (secondary MCP processes sharing the same port) can relay feedback through the owner for notification delivery. (The 3 pull HTTP endpoints were already removed in T04 alongside the session-store functions they depended on.)
 
 ## Prompt
 ### http-server.ts changes
 
 1. **Add `pushFeedback` to options** — extend `HttpServerOptions` to accept `pushFeedback: (items: FeedbackItem[]) => Promise<PushResult>`. Thread it from the `createHttpServer` call in `server.ts`.
 
-2. **Remove pull endpoints**:
-   - Remove `GET /feedback` handler (lines 136–168) — the entire block including orphan rescue logic
-   - Remove `GET /pending-summary` handler (lines 170–175)
-   - Remove `DELETE /feedback/:id` handler (lines 177–201)
-
-3. **Add `POST /push-notification` endpoint** — after the existing `POST /broadcast` handler:
+2. **Add `POST /push-notification` endpoint** — after the existing `POST /broadcast` handler:
    ```ts
    if (urlObj.pathname === "/push-notification" && req.method === "POST") {
      parseJsonBody(req)
@@ -55,13 +50,11 @@ Remove the three pull-based HTTP endpoints, add the authenticated `POST /push-no
    - Add `req.on("error", reject)` to handle mid-stream aborts
    - Add a byte accumulator: reject with a `PayloadTooLarge` error when accumulated bytes exceed `16 * 1024 * 1024` (16MB)
 
-5. Note: dead imports (`getSessionReady`, `setSessionReady`, `findOrphanBuckets`, `migrateOrphanInto`), the ready migration in `/register-session`, and the `orphanSessions` field in `/status` were already cleaned up in T04. This task only removes the 3 pull HTTP endpoint handlers and adds the new one.
-
 ### proxy-client.ts changes
 
-8. **Remove polling methods**: `pollForFeedback`, `fetchReadyFeedback`, `fetchPendingSummary`, `deleteFeedbackViaHttp`.
+5. **Remove polling methods**: `pollForFeedback`, `fetchReadyFeedback`, `fetchPendingSummary`, `deleteFeedbackViaHttp`.
 
-9. **Add `pushFeedbackViaHttp`**:
+6. **Add `pushFeedbackViaHttp`**:
    ```ts
    async function pushFeedbackViaHttp(items: unknown[]): Promise<{ ok: boolean; reason?: string }> {
      const response = await fetch(`${baseUrl}/push-notification`, {
@@ -77,17 +70,15 @@ Remove the three pull-based HTTP endpoints, add the authenticated `POST /push-no
    }
    ```
 
-10. **Add timeouts to all remaining `fetch()` calls** — add `signal: AbortSignal.timeout(5000)` to `fetchServerStatus`, `broadcastViaHttp`, `registerSession`, `unregisterSession`.
+7. **Add timeouts to all remaining `fetch()` calls** — add `signal: AbortSignal.timeout(5000)` to `fetchServerStatus`, `broadcastViaHttp`, `registerSession`, `unregisterSession`.
 
 ### server.ts wiring
 
-11. Update the `createHttpServer` call to pass `pushFeedback`.
+8. Update the `createHttpServer` call to pass `pushFeedback`.
 
 ### Tests
 
-Update `tests/http-endpoints.test.ts`:
-- Remove tests for the 3 deleted endpoints (GET /feedback, GET /pending-summary, DELETE /feedback/:id)
-- Remove orphan bucket reporting tests
+Update `tests/http-endpoints.test.ts` (pull endpoint tests and orphan tests were already removed in T04):
 - Add tests for `POST /push-notification`:
   - Returns 400 when sessionId or processId missing
   - Returns 403 when processId doesn't match registered session
@@ -98,7 +89,7 @@ Update `tests/http-endpoints.test.ts`:
 
 ## Focus
 - The `parseJsonBody` function is used by ALL POST endpoints (broadcast, register-session, unregister-session, and now push-notification). The byte limit and error handler apply globally.
-- The `/register-session` handler has session migration logic (lines 240–261) that copies ready/pending between sessions. Remove the ready-related lines but keep the pending migration and WebSocket client rebinding — that's still needed for the proxy registration flow.
+- T04 already removed ready-related code from `/register-session` and the 3 pull HTTP endpoints. Only pending migration and WebSocket client rebinding remain.
 - `broadcastPendingStatus` function (line 38) stays — it's used by ws-server.ts. It only reads `getSessionPending` which is still present.
 - For the proxy-client, `AbortSignal.timeout()` is available in Node 18+. The project runs on Node 22.
 - The test for POST /push-notification needs a registered session. Use the existing `registerSession` helper in the test file (line 250) to set up the session before testing the endpoint.
