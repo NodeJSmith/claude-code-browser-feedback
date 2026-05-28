@@ -46,7 +46,7 @@ npm install
 ### 2. Add to Claude Code
 
 ```bash
-claude mcp add --scope user browser-feedback node /path/to/mcp-claude-code-browser-feedback/src/server.ts
+claude mcp add --scope user browser-feedback -- node --experimental-strip-types /path/to/mcp-claude-code-browser-feedback/src/server.ts
 ```
 
 Or add manually to your Claude Code MCP configuration:
