@@ -1,7 +1,7 @@
 ---
 task_id: "T01"
 title: "Add screenshots module for disk-based screenshot storage"
-status: "planned"
+status: "done"
 depends_on: []
 implements: ["FR#4", "FR#5", "AC#3"]
 ---
