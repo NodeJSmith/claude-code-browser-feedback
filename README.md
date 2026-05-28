@@ -68,7 +68,7 @@ Or add manually to your Claude Code MCP configuration:
 > **Research preview:** This server uses Claude Code's push channel feature, which requires the `--dangerously-load-development-channels` flag during the research preview period. Start Claude Code with:
 >
 > ```bash
-> claude --dangerously-load-development-channels
+> claude --dangerously-load-development-channels server:browser-feedback
 > ```
 
 ## Usage
