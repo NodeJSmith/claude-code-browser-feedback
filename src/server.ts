@@ -118,8 +118,6 @@ const SESSION_ID = deriveSessionId(PROJECT_DIR);
 const PROCESS_ID = crypto.randomUUID();
 const proxy = createProxyClient({ port: PORT, sessionId: SESSION_ID, processId: PROCESS_ID, projectDir: PROJECT_DIR });
 
-const { httpServer } = createHttpServer({ port: PORT, pkgVersion: PKG_VERSION, srcDir: __dirname });
-
 const mcpServer = new Server(
   { name: "browser-feedback-mcp", version: "0.1.0" },
   {
@@ -133,6 +131,7 @@ const mcpServer = new Server(
 );
 
 const pushFeedback = createPushFeedback({ mcpServer, sessionId: SESSION_ID });
+const { httpServer } = createHttpServer({ port: PORT, pkgVersion: PKG_VERSION, srcDir: __dirname, pushFeedback });
 const { wss, broadcast } = createWsServer({ httpServer, port: PORT, pushFeedback });
 
 registerMcpHandlers({ mcpServer, port: PORT, sessionId: SESSION_ID, srcDir: __dirname, proxy, broadcast });

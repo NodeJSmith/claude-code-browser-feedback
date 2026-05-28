@@ -1,7 +1,5 @@
 import { detectProjectUrl } from "./utils.ts";
 
-const POLL_INTERVAL_MS = 500;
-
 interface ProxyClientOptions {
   port: number;
   sessionId: string;
@@ -15,7 +13,7 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
   async function fetchServerStatus(sid?: string): Promise<Record<string, unknown> | null> {
     try {
       const url = sid ? `${baseUrl}/status?session=${sid}` : `${baseUrl}/status`;
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
       if (response.ok) {
         return (await response.json()) as Record<string, unknown>;
       }
@@ -23,35 +21,6 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
       // Server not running or not reachable
     }
     return null;
-  }
-
-  async function fetchReadyFeedback(clear = true): Promise<Record<string, unknown> | null> {
-    try {
-      const response = await fetch(
-        `${baseUrl}/feedback?clear=${clear}&session=${sessionId}`,
-      );
-      if (response.ok) {
-        return (await response.json()) as Record<string, unknown>;
-      }
-    } catch {
-      // Server not running or not reachable
-    }
-    return null;
-  }
-
-  async function pollForFeedback(timeoutSeconds: number): Promise<unknown> {
-    const pollInterval = POLL_INTERVAL_MS;
-    const maxAttempts = (timeoutSeconds * 1000) / pollInterval;
-
-    for (let i = 0; i < maxAttempts; i++) {
-      const result = await fetchReadyFeedback(true) as { feedback?: unknown[] } | null;
-      if (result && result.feedback && result.feedback.length > 0) {
-        if (result.feedback.length === 1) return result.feedback[0];
-        return result.feedback;
-      }
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
-    }
-    throw new Error("Timeout waiting for browser feedback");
   }
 
   async function broadcastViaHttp(message: unknown): Promise<Record<string, unknown> | null> {
@@ -60,6 +29,7 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(message),
+        signal: AbortSignal.timeout(5000),
       });
       if (response.ok) {
         return (await response.json()) as Record<string, unknown>;
@@ -70,30 +40,21 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
     return null;
   }
 
-  async function fetchPendingSummary(): Promise<Record<string, unknown> | null> {
+  async function pushFeedbackViaHttp(items: unknown[]): Promise<{ ok: boolean; reason?: string }> {
     try {
-      const response = await fetch(`${baseUrl}/pending-summary?session=${sessionId}`);
-      if (response.ok) {
-        return (await response.json()) as Record<string, unknown>;
-      }
-    } catch {
-      // Server not running or not reachable
-    }
-    return null;
-  }
-
-  async function deleteFeedbackViaHttp(id: string): Promise<Record<string, unknown> | null> {
-    try {
-      const response = await fetch(`${baseUrl}/feedback/${id}?session=${sessionId}`, {
-        method: "DELETE",
+      const response = await fetch(`${baseUrl}/push-notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, processId, items }),
+        signal: AbortSignal.timeout(5000),
       });
       if (response.ok) {
-        return (await response.json()) as Record<string, unknown>;
+        return (await response.json()) as { ok: boolean; reason?: string };
       }
-    } catch {
-      // Server not running or not reachable
+      return { ok: false, reason: `HTTP ${response.status}` };
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) };
     }
-    return null;
   }
 
   async function registerSession(): Promise<void> {
@@ -109,6 +70,7 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
           projectUrl: detected.url,
           detectedFrom: detected.detectedFrom,
         }),
+        signal: AbortSignal.timeout(5000),
       });
     } catch {
       // Server not reachable, session won't appear in registry
@@ -121,6 +83,7 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, processId }),
+        signal: AbortSignal.timeout(5000),
       });
     } catch {
       // Ignore errors during shutdown
@@ -129,11 +92,8 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
 
   return {
     fetchServerStatus,
-    fetchReadyFeedback,
-    pollForFeedback,
     broadcastViaHttp,
-    fetchPendingSummary,
-    deleteFeedbackViaHttp,
+    pushFeedbackViaHttp,
     registerSession,
     unregisterSession,
   };

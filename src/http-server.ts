@@ -14,14 +14,31 @@ import {
   persistSession,
   deleteSession,
 } from "./session-store.ts";
+import type { FeedbackItem, PushResult } from "./server.ts";
+
+const MAX_BODY_BYTES = 16 * 1024 * 1024; // 16MB
 
 function parseJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let body = "";
+    let bytesReceived = 0;
+    let tooLarge = false;
+    req.on("error", reject);
     req.on("data", (chunk: Buffer) => {
+      bytesReceived += chunk.length;
+      if (bytesReceived > MAX_BODY_BYTES) {
+        tooLarge = true;
+        return; // drain without accumulating
+      }
       body += chunk;
     });
     req.on("end", () => {
+      if (tooLarge) {
+        const err = new Error("Payload too large") as NodeJS.ErrnoException;
+        err.code = "PAYLOAD_TOO_LARGE";
+        reject(err);
+        return;
+      }
       try {
         resolve(JSON.parse(body));
       } catch (err) {
@@ -45,9 +62,10 @@ interface HttpServerOptions {
   port: number;
   pkgVersion: string;
   srcDir: string;
+  pushFeedback: (items: FeedbackItem[]) => Promise<PushResult>;
 }
 
-export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions) {
+export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: HttpServerOptions) {
   const httpServer = http.createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
@@ -143,7 +161,45 @@ export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: true, clientCount: sentCount }));
         })
-        .catch(() => {
+        .catch((err: NodeJS.ErrnoException) => {
+          if (err.code === "PAYLOAD_TOO_LARGE") {
+            res.writeHead(413, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Payload too large" }));
+            return;
+          }
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Invalid JSON" }));
+        });
+      return;
+    }
+
+    if (urlObj.pathname === "/push-notification" && req.method === "POST") {
+      parseJsonBody(req)
+        .then(async (data) => {
+          const sessionId = data.sessionId as string;
+          const processId = data.processId as string;
+          if (!sessionId || !processId || !isValidSessionId(sessionId)) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "sessionId and processId required" }));
+            return;
+          }
+          const registered = sessionRegistry.get(sessionId);
+          if (!registered || !registered.processId || registered.processId !== processId) {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Unauthorized: processId does not match registered session" }));
+            return;
+          }
+          const items = data.items as FeedbackItem[];
+          const result = await pushFeedback(items);
+          res.writeHead(result.ok ? 200 : 502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        })
+        .catch((err: NodeJS.ErrnoException) => {
+          if (err.code === "PAYLOAD_TOO_LARGE") {
+            res.writeHead(413, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Payload too large" }));
+            return;
+          }
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Invalid JSON" }));
         });

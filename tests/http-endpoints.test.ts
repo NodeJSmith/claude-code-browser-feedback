@@ -421,3 +421,125 @@ describe("WebSocket session routing", () => {
   });
 });
 
+// POST /push-notification endpoint
+
+describe("POST /push-notification", () => {
+  it("returns 400 when sessionId is missing", async () => {
+    const resp = await fetch(`${BASE_URL}/push-notification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ processId: "proc-abc", items: [] }),
+    });
+    expect(resp.status).toBe(400);
+    const data = await resp.json();
+    expect(data.error).toMatch(/sessionId/);
+  });
+
+  it("returns 400 when processId is missing", async () => {
+    const sessionId = crypto.randomUUID();
+    const resp = await fetch(`${BASE_URL}/push-notification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, items: [] }),
+    });
+    expect(resp.status).toBe(400);
+    const data = await resp.json();
+    expect(data.error).toMatch(/processId/);
+  });
+
+  it("returns 403 when processId does not match registered session", async () => {
+    const sessionId = crypto.randomUUID();
+    const correctProcessId = `proc-${sessionId.slice(0, 8)}`;
+    const wrongProcessId = "proc-wrong";
+
+    await registerSession(sessionId, { processId: correctProcessId });
+
+    try {
+      const resp = await fetch(`${BASE_URL}/push-notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, processId: wrongProcessId, items: [] }),
+      });
+      expect(resp.status).toBe(403);
+      const data = await resp.json();
+      expect(data.error).toMatch(/[Uu]nauthorized/);
+    } finally {
+      await unregisterSession(sessionId, correctProcessId);
+    }
+  });
+
+  it("returns 403 when session is not registered at all", async () => {
+    const sessionId = crypto.randomUUID();
+    const resp = await fetch(`${BASE_URL}/push-notification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, processId: "any-proc", items: [] }),
+    });
+    expect(resp.status).toBe(403);
+    const data = await resp.json();
+    expect(data.error).toMatch(/[Uu]nauthorized/);
+  });
+
+  it("returns 200 with ok:true when processId matches and push succeeds", async () => {
+    const sessionId = crypto.randomUUID();
+    const processId = `proc-${sessionId.slice(0, 8)}`;
+
+    await registerSession(sessionId, { processId });
+
+    try {
+      const resp = await fetch(`${BASE_URL}/push-notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          processId,
+          items: [
+            {
+              id: "item-1",
+              description: "Test feedback",
+              consoleLogs: [],
+              element: null,
+              url: "http://localhost:3000",
+              timestamp: new Date().toISOString(),
+              screenshot: null,
+            },
+          ],
+        }),
+      });
+      expect(resp.status).toBe(200);
+      const data = await resp.json();
+      expect(data.ok).toBe(true);
+    } finally {
+      await unregisterSession(sessionId, processId);
+    }
+  });
+
+  it("returns 400 for invalid JSON body", async () => {
+    const resp = await fetch(`${BASE_URL}/push-notification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not valid json",
+    });
+    expect(resp.status).toBe(400);
+    const data = await resp.json();
+    expect(data.error).toBe("Invalid JSON");
+  });
+});
+
+// parseJsonBody size limit
+
+describe("parseJsonBody size limit", () => {
+  it("returns 413 when body exceeds 16MB", async () => {
+    // Generate a body that is just over 16MB
+    const big = "x".repeat(16 * 1024 * 1024 + 1);
+    const body = JSON.stringify({ data: big });
+
+    const resp = await fetch(`${BASE_URL}/broadcast?session=unmatched`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    expect(resp.status).toBe(413);
+  });
+});
+

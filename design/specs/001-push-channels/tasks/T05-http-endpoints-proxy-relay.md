@@ -1,7 +1,7 @@
 ---
 task_id: "T05"
 title: "Clean up HTTP endpoints and add proxy push relay"
-status: "planned"
+status: "done"
 depends_on: ["T02", "T04"]
 implements: ["FR#10", "AC#7"]
 ---
