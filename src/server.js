@@ -19,7 +19,7 @@ import {
 import { createProxyClient } from "./proxy-client.ts";
 import { createHttpServer } from "./http-server.ts";
 import { createWsServer } from "./ws-server.ts";
-import { registerMcpHandlers } from "./mcp-tools.js";
+import { registerMcpHandlers } from "./mcp-tools.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

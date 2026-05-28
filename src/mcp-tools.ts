@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
+import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
   getPendingSummary,
@@ -20,8 +21,18 @@ import {
   migrateOrphanInto,
 } from "./session-store.ts";
 import { broadcastPendingStatus } from "./http-server.ts";
+import type { createProxyClient } from "./proxy-client.ts";
 
-export function registerMcpHandlers({ mcpServer, port, sessionId, srcDir, proxy, broadcast }) {
+interface McpHandlersOptions {
+  mcpServer: Server;
+  port: number;
+  sessionId: string;
+  srcDir: string;
+  proxy: ReturnType<typeof createProxyClient>;
+  broadcast: (message: unknown, sessionId?: string) => void;
+}
+
+export function registerMcpHandlers({ mcpServer, port, sessionId, srcDir, proxy, broadcast }: McpHandlersOptions): void {
 
 mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
@@ -234,13 +245,14 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
 
 // Handle tool calls
 mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+  const { name } = request.params;
+  const args = (request.params.arguments || {}) as Record<string, unknown>;
 
   switch (name) {
     case "install_widget": {
-      const devOnly = args?.dev_only !== false; // Default true
-      const projectDir = args?.project_dir || process.cwd();
-      let filePath = args?.file_path;
+      const devOnly = args.dev_only !== false;
+      const projectDir = (args.project_dir as string) || process.cwd();
+      let filePath = args.file_path as string | undefined;
 
       // Default hostname patterns for local development
       const defaultHostnamePatterns = [
@@ -252,7 +264,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         "*.dev",
         "*.ddev.site",
       ];
-      const allowedHostnames = args?.allowed_hostnames || defaultHostnamePatterns;
+      const allowedHostnames = (args.allowed_hostnames as string[]) || defaultHostnamePatterns;
 
       // Auto-detect HTML file if not specified
       if (!filePath) {
@@ -323,14 +335,12 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // Generate script tag
-      let scriptTag;
-      let hostnameInfo;
-      let detected = { url: null, detectedFrom: null };
+      let scriptTag: string;
+      let hostnameInfo: string;
+      let detected = detectProjectUrl(projectDir);
 
       if (devOnly) {
-        // Try to detect project URL for precise hostname matching
-        detected = detectProjectUrl(projectDir);
-        let hostnameCheck;
+        let hostnameCheck: string;
 
         if (detected.url) {
           // Use exact hostname match from detected URL
@@ -409,8 +419,8 @@ Next steps:
     }
 
     case "uninstall_widget": {
-      const projectDir = args?.project_dir || process.cwd();
-      let filePath = args?.file_path;
+      const projectDir = (args.project_dir as string) || process.cwd();
+      let filePath = args.file_path as string | undefined;
 
       // If no file specified, search for files containing the widget
       if (!filePath) {
@@ -553,9 +563,8 @@ The widget only loads in development (localhost) by default.
     }
 
     case "wait_for_browser_feedback": {
-      const timeoutSeconds = args?.timeout_seconds || 300;
+      const timeoutSeconds = (args.timeout_seconds as number) || 300;
 
-      // If we don't own the HTTP server, poll via HTTP
       if (!isHttpServerOwner()) {
         try {
           const feedback = await proxy.pollForFeedback(timeoutSeconds);
@@ -567,7 +576,7 @@ The widget only loads in development (localhost) by default.
             content: [
               {
                 type: "text",
-                text: err.message,
+                text: (err as Error).message,
               },
             ],
           };
@@ -604,14 +613,14 @@ The widget only loads in development (localhost) by default.
     }
 
     case "get_pending_feedback": {
-      const shouldClear = args?.clear !== false;
+      const shouldClear = args.clear !== false;
 
       // If we don't own the HTTP server, fetch via HTTP
       if (!isHttpServerOwner()) {
-        const result = await proxy.fetchReadyFeedback(shouldClear);
+        const result = await proxy.fetchReadyFeedback(shouldClear) as { feedback?: unknown[]; orphans?: unknown[] } | null;
         if (result && result.feedback) {
           if (result.feedback.length === 0) {
-            const orphans = Array.isArray(result.orphans) ? result.orphans : [];
+            const orphans = Array.isArray(result.orphans) ? result.orphans as Record<string, unknown>[] : [];
             if (orphans.length > 0) {
               const hint = orphans
                 .map(
@@ -772,7 +781,7 @@ The widget only loads in development (localhost) by default.
     }
 
     case "delete_pending_feedback": {
-      const id = args?.id;
+      const id = args.id as string | undefined;
       if (!id) {
         return {
           content: [
@@ -810,7 +819,7 @@ The widget only loads in development (localhost) by default.
         }
       }
 
-      const pending = getSessionPending(sessionId);
+      const pending = getSessionPending(sessionId) as { id?: string }[];
       const initialLength = pending.length;
       setSessionPending(
         sessionId,
@@ -833,14 +842,14 @@ The widget only loads in development (localhost) by default.
     }
 
     case "wait_for_multiple_feedback": {
-      const timeoutSeconds = args?.timeout_seconds || 300;
-      const message = args?.message || "Submit all your feedback, then click 'Done' when finished.";
+      const timeoutSeconds = (args.timeout_seconds as number) || 300;
+      const message = (args.message as string) || "Submit all your feedback, then click 'Done' when finished.";
 
       // If we don't own the HTTP server, use a simpler polling approach
       if (!isHttpServerOwner()) {
         // Check connection status first
-        const status = await proxy.fetchServerStatus(sessionId);
-        if (!status || status.connectedClients === 0) {
+        const status = await proxy.fetchServerStatus(sessionId) as { connectedClients?: number } | null;
+        if (!status || !status.connectedClients) {
           return {
             content: [
               {
@@ -859,13 +868,13 @@ The widget only loads in development (localhost) by default.
         });
 
         // Poll for feedback - collect until timeout or no new feedback for 5 seconds
-        const allFeedback = [];
+        const allFeedback: unknown[] = [];
         const startTime = Date.now();
         let lastFeedbackTime = startTime;
-        const idleTimeout = 5000; // 5 seconds of no new feedback = done
+        const idleTimeout = 5000;
 
         while (Date.now() - startTime < timeoutSeconds * 1000) {
-          const result = await proxy.fetchReadyFeedback(true);
+          const result = await proxy.fetchReadyFeedback(true) as { feedback?: unknown[] } | null;
           if (result && result.feedback && result.feedback.length > 0) {
             allFeedback.push(...result.feedback);
             lastFeedbackTime = Date.now();
@@ -931,10 +940,10 @@ The widget only loads in development (localhost) by default.
       // Wait for user to press "Send to Claude" via feedbackResolvers
       try {
         const allFeedback = await Promise.race([
-          new Promise((resolve) => {
+          new Promise<unknown[]>((resolve) => {
             getSessionResolvers(sessionId).push(resolve);
           }),
-          new Promise((_, reject) =>
+          new Promise<never>((_, reject) =>
             setTimeout(
               () => reject(new Error("Timeout waiting for feedback")),
               timeoutSeconds * 1000,
@@ -961,7 +970,7 @@ The widget only loads in development (localhost) by default.
           content: [
             {
               type: "text",
-              text: err.message,
+              text: (err as Error).message,
             },
           ],
         };
@@ -971,7 +980,7 @@ The widget only loads in development (localhost) by default.
     case "get_connection_status": {
       // If we don't own the HTTP server, fetch status from the running server
       if (!isHttpServerOwner()) {
-        const status = await proxy.fetchServerStatus(sessionId);
+        const status = await proxy.fetchServerStatus(sessionId) as { connectedClients?: number; orphanSessions?: unknown[] } | null;
         if (status) {
           return {
             content: [
@@ -979,8 +988,8 @@ The widget only loads in development (localhost) by default.
                 type: "text",
                 text: JSON.stringify(
                   {
-                    connected: status.connectedClients > 0,
-                    clientCount: status.connectedClients,
+                    connected: (status.connectedClients || 0) > 0,
+                    clientCount: status.connectedClients || 0,
                     serverUrl: `http://localhost:${port}`,
                     widgetUrl: `http://localhost:${port}/widget.js?session=${sessionId}`,
                     sessionId: sessionId,
@@ -1038,21 +1047,21 @@ The widget only loads in development (localhost) by default.
     }
 
     case "request_annotation": {
-      const message = args?.message || "Please annotate the issue you'd like to report.";
+      const message = (args.message as string) || "Please annotate the issue you'd like to report.";
 
       // If we don't own the HTTP server, broadcast via HTTP
       if (!isHttpServerOwner()) {
         const result = await proxy.broadcastViaHttp({
           type: "request_annotation",
           message: message,
-        });
+        }) as { success?: boolean; clientCount?: number } | null;
         if (result && result.success) {
           return {
             content: [
               {
                 type: "text",
                 text:
-                  result.clientCount > 0
+                  (result.clientCount || 0) > 0
                     ? `Annotation request sent to ${result.clientCount} connected browser(s). The user will see a prompt asking them to annotate.`
                     : "No browser clients connected. Make sure the widget script is loaded in your app.",
               },
@@ -1101,10 +1110,10 @@ The widget only loads in development (localhost) by default.
     }
 
     case "open_in_browser": {
-      const projectDir = args?.project_dir || process.cwd();
-      const shouldOpen = args?.open === true;
-      let url = args?.url;
-      let detectedFrom = null;
+      const projectDir = (args.project_dir as string) || process.cwd();
+      const shouldOpen = args.open === true;
+      let url = args.url as string | null | undefined;
+      let detectedFrom: string | null = null;
 
       // If no URL provided, try to detect from config files
       if (!url) {

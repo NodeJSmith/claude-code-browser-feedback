@@ -136,8 +136,8 @@ interface ImageContent {
 
 type ContentBlock = TextContent | ImageContent;
 
-export function formatFeedbackAsContent(items: PendingItem | PendingItem[]): ContentBlock[] {
-  const list = Array.isArray(items) ? items : [items];
+export function formatFeedbackAsContent(items: PendingItem | PendingItem[] | unknown): ContentBlock[] {
+  const list: PendingItem[] = Array.isArray(items) ? items : [items as PendingItem];
 
   const content: ContentBlock[] = [];
   for (const item of list) {
