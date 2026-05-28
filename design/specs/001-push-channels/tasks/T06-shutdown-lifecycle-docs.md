@@ -1,7 +1,7 @@
 ---
 task_id: "T06"
 title: "Add shutdown drain, startup sweep, and update documentation"
-status: "planned"
+status: "done"
 depends_on: ["T01", "T02"]
 implements: ["FR#9", "AC#6"]
 ---

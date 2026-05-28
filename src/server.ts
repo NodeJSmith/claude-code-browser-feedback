@@ -19,7 +19,7 @@ import { createProxyClient } from "./proxy-client.ts";
 import { createHttpServer } from "./http-server.ts";
 import { createWsServer } from "./ws-server.ts";
 import { registerMcpHandlers } from "./mcp-tools.ts";
-import { saveScreenshot } from "./screenshots.ts";
+import { saveScreenshot, cleanupScreenshots, sweepOrphanScreenshots } from "./screenshots.ts";
 import type { ElementInfo } from "./widget/widget-selection.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -49,13 +49,22 @@ function rejectAfterTimeout(ms: number): Promise<never> {
   );
 }
 
+const SHUTDOWN_TIMEOUT_MS = 2000;
+
 interface PushFeedbackOptions {
   mcpServer: Server;
   sessionId: string;
 }
 
-export function createPushFeedback({ mcpServer, sessionId }: PushFeedbackOptions): (items: FeedbackItem[]) => Promise<PushResult> {
+export interface PushFeedbackHandle {
+  pushFeedback: (items: FeedbackItem[]) => Promise<PushResult>;
+  drainInFlight: (timeoutMs?: number) => Promise<void>;
+  getInFlightCount: () => number;
+}
+
+export function createPushFeedback({ mcpServer, sessionId }: PushFeedbackOptions): PushFeedbackHandle {
   let prev: Promise<PushResult> = Promise.resolve({ ok: true });
+  let inFlightCount = 0;
 
   async function doPush(items: FeedbackItem[]): Promise<PushResult> {
     const screenshotPaths: (string | null)[] = [];
@@ -99,16 +108,40 @@ export function createPushFeedback({ mcpServer, sessionId }: PushFeedbackOptions
     return { ok: false, reason: "unreachable" };
   }
 
-  return function pushFeedback(items: FeedbackItem[]): Promise<PushResult> {
-    const next = prev.then(() => doPush(items));
+  function pushFeedback(items: FeedbackItem[]): Promise<PushResult> {
+    inFlightCount++;
+    const next = prev.then(() => doPush(items)).finally(() => {
+      inFlightCount--;
+    });
     prev = next.catch(() => ({ ok: false, reason: "unexpected" }) as PushResult);
     return next;
-  };
+  }
+
+  function drainInFlight(timeoutMs = SHUTDOWN_TIMEOUT_MS): Promise<void> {
+    if (inFlightCount === 0) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        if (inFlightCount === 0) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 10);
+      setTimeout(() => {
+        clearInterval(interval);
+        resolve();
+      }, timeoutMs);
+    });
+  }
+
+  function getInFlightCount(): number {
+    return inFlightCount;
+  }
+
+  return { pushFeedback, drainInFlight, getInFlightCount };
 }
 
 const PORT = parseInt(process.env.FEEDBACK_PORT || "9877");
 const HOST = process.env.FEEDBACK_HOST || "127.0.0.1";
-const SHUTDOWN_TIMEOUT_MS = 2000;
 const PKG_VERSION = JSON.parse(
   fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"),
 ).version;
@@ -130,7 +163,7 @@ const mcpServer = new Server(
   },
 );
 
-const pushFeedback = createPushFeedback({ mcpServer, sessionId: SESSION_ID });
+const { pushFeedback, drainInFlight } = createPushFeedback({ mcpServer, sessionId: SESSION_ID });
 const { httpServer } = createHttpServer({ port: PORT, pkgVersion: PKG_VERSION, srcDir: __dirname, pushFeedback });
 const { wss, broadcast } = createWsServer({ httpServer, port: PORT, pushFeedback });
 
@@ -145,38 +178,44 @@ function shutdown(reason: string): void {
   console.error(`[browser-feedback-mcp] Shutting down: ${reason}`);
 
   if (isHttpServerOwner()) {
-    try {
-      storage.flushAll();
-    } catch {
-      /* ignore */
-    }
-
-    const ownSession = sessionRegistry.get(SESSION_ID);
-    if (ownSession && ownSession.processId === PROCESS_ID) {
-      sessionRegistry.delete(SESSION_ID);
-    }
-
-    for (const client of connectedClients) {
-      try {
-        client.close();
-      } catch {
-        // Ignore errors during shutdown
-      }
-    }
-
-    wss.close(() => {
-      console.error("[browser-feedback-mcp] WebSocket server closed");
-    });
-
-    httpServer.close(() => {
-      console.error("[browser-feedback-mcp] HTTP server closed");
-      process.exit(0);
-    });
-
-    setTimeout(() => {
+    // Hard cutoff — fires regardless of drain state
+    const hardExit = setTimeout(() => {
       console.error("[browser-feedback-mcp] Forcing exit after timeout");
       process.exit(0);
     }, SHUTDOWN_TIMEOUT_MS);
+
+    void drainInFlight().then(() => {
+      cleanupScreenshots(SESSION_ID);
+
+      try {
+        storage.flushAll();
+      } catch {
+        /* ignore */
+      }
+
+      const ownSession = sessionRegistry.get(SESSION_ID);
+      if (ownSession && ownSession.processId === PROCESS_ID) {
+        sessionRegistry.delete(SESSION_ID);
+      }
+
+      for (const client of connectedClients) {
+        try {
+          client.close();
+        } catch {
+          // Ignore errors during shutdown
+        }
+      }
+
+      wss.close(() => {
+        console.error("[browser-feedback-mcp] WebSocket server closed");
+      });
+
+      httpServer.close(() => {
+        console.error("[browser-feedback-mcp] HTTP server closed");
+        clearTimeout(hardExit);
+        process.exit(0);
+      });
+    });
   } else {
     proxy.unregisterSession().finally(() => {
       process.exit(0);
@@ -271,6 +310,7 @@ async function main(): Promise<void> {
       detectedFrom: detected.detectedFrom,
       registeredAt: new Date().toISOString(),
     });
+    sweepOrphanScreenshots(Array.from(sessionRegistry.keys()));
     console.error(`[browser-feedback-mcp] Session: ${SESSION_ID}`);
   } else {
     await proxy.registerSession();

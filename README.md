@@ -46,7 +46,7 @@ npm install
 ### 2. Add to Claude Code
 
 ```bash
-claude mcp add --scope user browser-feedback node /path/to/mcp-claude-code-browser-feedback/src/server.js
+claude mcp add --scope user browser-feedback node /path/to/mcp-claude-code-browser-feedback/src/server.ts
 ```
 
 Or add manually to your Claude Code MCP configuration:
@@ -56,7 +56,7 @@ Or add manually to your Claude Code MCP configuration:
   "mcpServers": {
     "browser-feedback": {
       "command": "node",
-      "args": ["/path/to/mcp-claude-code-browser-feedback/src/server.js"],
+      "args": ["--experimental-strip-types", "/path/to/mcp-claude-code-browser-feedback/src/server.ts"],
       "env": {
         "FEEDBACK_PORT": "9877"
       }
@@ -64,6 +64,12 @@ Or add manually to your Claude Code MCP configuration:
   }
 }
 ```
+
+> **Research preview:** This server uses Claude Code's push channel feature, which requires the `--dangerously-load-development-channels` flag during the research preview period. Start Claude Code with:
+>
+> ```bash
+> claude --dangerously-load-development-channels
+> ```
 
 ## Usage
 
@@ -74,16 +80,15 @@ Tell Claude you want to show it something in the browser:
 ```
 You: There's a bug with the checkout button, let me show you
 
-Claude: I'll install the feedback widget and wait for your annotation.
+Claude: I'll install the feedback widget.
 
         [Calls: install_widget]
         ✅ Widget installed in public/index.html
 
-        [Calls: wait_for_browser_feedback]
         Please refresh your browser. You'll see an "Add annotation" button.
-        Click it, then click on the problematic element.
+        Click it, then click on the problematic element and click "Send to Claude".
 
---- You use the browser widget to select the button ---
+--- You use the browser widget to select the button and click Send ---
 
 Claude: I received your feedback! I can see:
 
@@ -95,17 +100,15 @@ Claude: I received your feedback! I can see:
         Let me look at the checkout code and fix this...
 ```
 
+Feedback arrives in Claude's context automatically when you click "Send to Claude" — no polling, no coordination needed.
+
 ### Multiple Annotations
 
-You can submit multiple feedback items at once:
+Queue several annotations before sending:
 
 ```
-You: I have several issues to show you
-
-Claude: [Calls: wait_for_multiple_feedback]
-        Submit all your annotations, then click "Done" when finished.
-
---- You submit 3 feedback items, then click Done ---
+--- Add several annotations using the widget ---
+--- Click "Send to Claude" once when ready ---
 
 Claude: I received 3 feedback items. Let me address each one...
 ```
@@ -149,20 +152,17 @@ The extension connects to the MCP server at `http://localhost:9877` by default. 
 
 ## Available MCP Tools
 
-| Tool                         | Description                                                          |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `install_widget`             | Auto-inject the widget script into your app's HTML                   |
-| `uninstall_widget`           | Remove the widget when done                                          |
-| `wait_for_browser_feedback`  | Block until user submits single feedback                             |
-| `wait_for_multiple_feedback` | Wait for multiple feedback items (user clicks Done when finished)    |
-| `get_pending_feedback`       | Get any feedback that's been submitted                               |
-| `preview_pending_feedback`   | Preview pending feedback summaries without consuming them            |
-| `delete_pending_feedback`    | Delete a specific pending feedback item by ID                        |
-| `get_connection_status`      | Check if browser clients are connected                               |
-| `request_annotation`         | Prompt the user to annotate something specific                       |
-| `get_widget_snippet`         | Get the script tag for manual installation                           |
-| `open_in_browser`            | Open project URL in default browser (auto-detects from config files) |
-| `setup_extension`            | Help install the browser extension (opens folder + instructions)     |
+Feedback arrives via push channel notification — no polling tools needed.
+
+| Tool                    | Description                                                          |
+| ----------------------- | -------------------------------------------------------------------- |
+| `install_widget`        | Auto-inject the widget script into your app's HTML                   |
+| `uninstall_widget`      | Remove the widget when done                                          |
+| `get_connection_status` | Check if browser clients are connected                               |
+| `request_annotation`    | Prompt the user to annotate something specific                       |
+| `get_widget_snippet`    | Get the script tag for manual installation                           |
+| `open_in_browser`       | Open project URL in default browser (auto-detects from config files) |
+| `setup_extension`       | Help install the browser extension (opens folder + instructions)     |
 
 ### install_widget Options
 
@@ -232,9 +232,11 @@ Or for development-only loading:
 
 ### Environment Variables
 
-| Variable        | Default | Description                    |
-| --------------- | ------- | ------------------------------ |
-| `FEEDBACK_PORT` | `9877`  | Port for HTTP/WebSocket server |
+| Variable                   | Default                                           | Description                         |
+| -------------------------- | ------------------------------------------------- | ----------------------------------- |
+| `FEEDBACK_PORT`            | `9877`                                            | Port for HTTP/WebSocket server      |
+| `FEEDBACK_HOST`            | `127.0.0.1`                                       | Bind address for HTTP/WebSocket     |
+| `FEEDBACK_SCREENSHOT_DIR`  | `$TMPDIR/claude-browser-feedback/screenshots/`    | Directory where screenshots are saved |
 
 ## Screenshot Capture
 
@@ -261,7 +263,7 @@ kill <PID>
 Or use a different port:
 
 ```bash
-FEEDBACK_PORT=9878 node src/server.js
+FEEDBACK_PORT=9878 node --experimental-strip-types src/server.ts
 ```
 
 ### No feedback received
@@ -270,12 +272,19 @@ FEEDBACK_PORT=9878 node src/server.js
 - Ensure the widget script loaded correctly
 - Verify the MCP server logs for connection info
 
-## Security Notes
+## Security
 
-- The widget only connects to `localhost`
-- No data is sent to external servers
-- All communication stays on your machine
-- **Note:** The HTTP/WebSocket server listens on all interfaces (`0.0.0.0`) by default. If you need to restrict this, use a firewall or bind to a specific interface via a reverse proxy.
+The widget is designed for developer-controlled pages only.
+
+The `dev_only` option in `install_widget` restricts the widget to a set of allowed hostnames (localhost, `*.local`, `*.dev`, etc. by default). This is a security control against prompt injection, not just a convenience: the widget runs inside an arbitrary web page, and page JavaScript can craft annotation payloads with content like "Ignore previous instructions...". Restricting to dev hostnames prevents the widget from loading on production pages where untrusted content could be submitted to Claude.
+
+For defense in depth, user-supplied content (descriptions, console logs) is structurally separated from system-derived metadata in every channel notification, and the server's instructions to Claude explicitly identify the `description` and `consoleLogs` fields as untrusted user input.
+
+Additional notes:
+
+- The HTTP/WebSocket server binds to `127.0.0.1` by default — not accessible from other machines.
+- No data is sent to external servers; all communication stays on your machine.
+- Screenshots are written to a local temp directory and cleaned up on server shutdown.
 
 ## License
 

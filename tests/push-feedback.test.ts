@@ -98,7 +98,7 @@ describe("createPushFeedback", () => {
   });
 
   it("calls saveScreenshot for items with screenshots", async () => {
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
     const item = makeItem({ id: "item-1", screenshot: "data:image/png;base64,abc123" });
 
     await pushFeedback([item]);
@@ -107,7 +107,7 @@ describe("createPushFeedback", () => {
   });
 
   it("does not call saveScreenshot for items without screenshots", async () => {
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
     const item = makeItem({ screenshot: null });
 
     await pushFeedback([item]);
@@ -116,7 +116,7 @@ describe("createPushFeedback", () => {
   });
 
   it("constructs notification content with user-supplied data", async () => {
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
     const item = makeItem({
       id: "item-1",
       description: "button looks wrong",
@@ -134,7 +134,7 @@ describe("createPushFeedback", () => {
   });
 
   it("constructs notification content with system-derived data", async () => {
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
     const item = makeItem({
       id: "item-1",
       element: { selector: "button.submit", tagName: "button", id: "btn", className: "submit", fullSelector: "body > button.submit", text: null, innerHTML: null, outerHTML: null, attributes: {}, boundingRect: { top: 0, left: 0, width: 80, height: 30 } },
@@ -153,7 +153,7 @@ describe("createPushFeedback", () => {
 
   it("includes image_path in content when screenshot is saved successfully", async () => {
     vi.mocked(screenshots.saveScreenshot).mockReturnValue("/tmp/screenshots/session/item-1.png");
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
     const item = makeItem({ id: "item-1", screenshot: "data:image/png;base64,validdata" });
 
     await pushFeedback([item]);
@@ -165,7 +165,7 @@ describe("createPushFeedback", () => {
 
   it("omits image_path in content when screenshot save fails", async () => {
     vi.mocked(screenshots.saveScreenshot).mockReturnValue(null);
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
     const item = makeItem({ id: "item-1", screenshot: "data:image/png;base64,baddata" });
 
     await pushFeedback([item]);
@@ -176,7 +176,7 @@ describe("createPushFeedback", () => {
   });
 
   it("puts only session_id and item_count in meta", async () => {
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
     const items = [makeItem({ id: "item-1" }), makeItem({ id: "item-2" })];
 
     await pushFeedback(items);
@@ -191,7 +191,7 @@ describe("createPushFeedback", () => {
   });
 
   it("returns { ok: true } on successful notification", async () => {
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
     const result = await pushFeedback([makeItem()]);
 
     expect(result).toEqual({ ok: true });
@@ -199,7 +199,7 @@ describe("createPushFeedback", () => {
 
   it("returns { ok: false } when notification rejects after all retries", async () => {
     mockNotification.mockRejectedValue(new Error("transport closed"));
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
 
     const result = await pushFeedback([makeItem()]);
 
@@ -214,7 +214,7 @@ describe("createPushFeedback", () => {
     mockNotification
       .mockRejectedValueOnce(new Error("transient error"))
       .mockResolvedValue(undefined);
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
 
     const result = await pushFeedback([makeItem()]);
 
@@ -225,7 +225,7 @@ describe("createPushFeedback", () => {
   it("times out after 5 seconds and returns { ok: false }", async () => {
     // notification never resolves
     mockNotification.mockImplementation(() => new Promise(() => {}));
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
 
     const start = Date.now();
     const result = await pushFeedback([makeItem()]);
@@ -252,7 +252,7 @@ describe("createPushFeedback", () => {
       return Promise.resolve();
     });
 
-    const pushFeedback = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
+    const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server, sessionId: SESSION_ID });
 
     const first = pushFeedback([makeItem({ id: "item-1" })]);
     order.push("first-queued");
