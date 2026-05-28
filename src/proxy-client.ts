@@ -1,5 +1,7 @@
 import { detectProjectUrl } from "./utils.ts";
 
+const PROXY_TIMEOUT_MS = 5000;
+
 interface ProxyClientOptions {
   port: number;
   sessionId: string;
@@ -13,7 +15,7 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
   async function fetchServerStatus(sid?: string): Promise<Record<string, unknown> | null> {
     try {
       const url = sid ? `${baseUrl}/status?session=${sid}` : `${baseUrl}/status`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const response = await fetch(url, { signal: AbortSignal.timeout(PROXY_TIMEOUT_MS) });
       if (response.ok) {
         return (await response.json()) as Record<string, unknown>;
       }
@@ -28,8 +30,8 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
       const response = await fetch(`${baseUrl}/broadcast?session=${sessionId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(message),
-        signal: AbortSignal.timeout(5000),
+        body: JSON.stringify({ sessionId, processId, message }),
+        signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
       });
       if (response.ok) {
         return (await response.json()) as Record<string, unknown>;
@@ -46,7 +48,7 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, processId, items }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
       });
       if (response.ok) {
         return (await response.json()) as { ok: boolean; reason?: string };
@@ -70,7 +72,7 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
           projectUrl: detected.url,
           detectedFrom: detected.detectedFrom,
         }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
       });
     } catch {
       // Server not reachable, session won't appear in registry
@@ -83,7 +85,7 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, processId }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
       });
     } catch {
       // Ignore errors during shutdown

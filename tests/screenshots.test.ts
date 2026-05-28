@@ -104,8 +104,13 @@ describe("screenshots", () => {
       expect(fs.existsSync(sessionDir)).toBe(true);
     });
 
-    it("returns null for invalid base64 data", () => {
-      const result = screenshots.saveScreenshot("bad", "data:image/png;base64,!!!not-base64!!!", sessionId);
+    it("returns null for empty base64 data", () => {
+      const result = screenshots.saveScreenshot("bad", "data:image/png;base64,", sessionId);
+      expect(result).toBeNull();
+    });
+
+    it("returns null for invalid data URI format", () => {
+      const result = screenshots.saveScreenshot("bad", "not-a-data-uri", sessionId);
       expect(result).toBeNull();
     });
 

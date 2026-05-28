@@ -9,7 +9,6 @@ import {
   setSessionPending,
   getSessionClients,
 } from "./session-store.ts";
-import { broadcastPendingStatus } from "./http-server.ts";
 import type { FeedbackItem, PushResult } from "./server.ts";
 
 interface SessionWebSocket extends WebSocket {
@@ -20,9 +19,10 @@ interface WsServerOptions {
   httpServer: http.Server;
   port: number;
   pushFeedback: (items: FeedbackItem[]) => Promise<PushResult>;
+  broadcastPendingStatus: (sessionId: string) => void;
 }
 
-export function createWsServer({ httpServer, port, pushFeedback }: WsServerOptions) {
+export function createWsServer({ httpServer, port, pushFeedback, broadcastPendingStatus }: WsServerOptions) {
   const wss = new WebSocketServer({ server: httpServer, path: "/ws", clientTracking: true });
 
   wss.on("error", (err: Error) => {
@@ -57,7 +57,7 @@ export function createWsServer({ httpServer, port, pushFeedback }: WsServerOptio
               reason: "Session ID not recognized. Reload the page to fetch the current widget.",
             }),
           );
-        } catch (_) {
+        } catch {
           /* ignore */
         }
         ws.close(4001, "session_invalid");
@@ -101,68 +101,69 @@ export function createWsServer({ httpServer, port, pushFeedback }: WsServerOptio
     const status = getPendingSummary(getSessionPending(sessionId));
     ws.send(JSON.stringify({ type: "pending_status", ...status }));
 
-    ws.on("message", (data) => {
-      (async () => {
-        try {
-          const message = JSON.parse(data.toString()) as Record<string, unknown>;
-          const sid = ws._sessionId;
+    ws.on("message", async (data) => {
+      try {
+        const message = JSON.parse(data.toString()) as Record<string, unknown>;
+        const sid = ws._sessionId;
 
-          if (message.type === "feedback") {
-            console.error(`[browser-feedback-mcp] Received feedback from browser (session: ${sid})`);
+        if (message.type === "feedback") {
+          console.error(`[browser-feedback-mcp] Received feedback from browser (session: ${sid})`);
 
-            const payload = message.payload as Record<string, unknown>;
-            const feedback: Record<string, unknown> = {
-              ...payload,
-              receivedAt: new Date().toISOString(),
-            };
+          const payload = message.payload as Record<string, unknown>;
+          const feedback: Record<string, unknown> = {
+            ...payload,
+            receivedAt: new Date().toISOString(),
+          };
 
-            getSessionPending(sid).push(feedback);
-            persistSession(sid);
+          getSessionPending(sid).push(feedback);
+          persistSession(sid);
 
-            ws.send(JSON.stringify({ type: "feedback_received", id: feedback.id }));
+          ws.send(JSON.stringify({ type: "feedback_received", id: feedback.id }));
+          broadcastPendingStatus(sid);
+        }
+
+        if (message.type === "send_to_claude") {
+          const items = [...getSessionPending(sid)] as FeedbackItem[];
+          const result = await pushFeedback(items);
+          if (result.ok) {
+            const sentIds = new Set(items.map((i) => i.id));
+            setSessionPending(
+              sid,
+              getSessionPending(sid).filter((f) => !sentIds.has((f as FeedbackItem).id)),
+            );
+            broadcastPendingStatus(sid);
+            ws.send(JSON.stringify({ type: "sent_to_claude", count: items.length }));
+          } else {
+            ws.send(JSON.stringify({ type: "push_failed", reason: result.reason }));
+          }
+        }
+
+        if (message.type === "delete_feedback") {
+          const idToDelete = message.id as string;
+          const pending = getSessionPending(sid) as { id?: string }[];
+          const initialLength = pending.length;
+          setSessionPending(
+            sid,
+            pending.filter((f) => f.id !== idToDelete),
+          );
+          const deleted = getSessionPending(sid).length < initialLength;
+
+          if (deleted) {
+            console.error(`[browser-feedback-mcp] Deleted feedback: ${idToDelete} (session: ${sid})`);
             broadcastPendingStatus(sid);
           }
 
-          if (message.type === "send_to_claude") {
-            const pending = getSessionPending(sid);
-            const items = [...pending] as FeedbackItem[];
-            const result = await pushFeedback(items);
-            if (result.ok) {
-              setSessionPending(sid, []);
-              broadcastPendingStatus(sid);
-              ws.send(JSON.stringify({ type: "sent_to_claude", count: items.length }));
-            } else {
-              ws.send(JSON.stringify({ type: "push_failed", reason: result.reason }));
-            }
-          }
-
-          if (message.type === "delete_feedback") {
-            const idToDelete = message.id as string;
-            const pending = getSessionPending(sid) as { id?: string }[];
-            const initialLength = pending.length;
-            setSessionPending(
-              sid,
-              pending.filter((f) => f.id !== idToDelete),
-            );
-            const deleted = getSessionPending(sid).length < initialLength;
-
-            if (deleted) {
-              console.error(`[browser-feedback-mcp] Deleted feedback: ${idToDelete} (session: ${sid})`);
-              broadcastPendingStatus(sid);
-            }
-
-            ws.send(
-              JSON.stringify({
-                type: "feedback_deleted",
-                id: idToDelete,
-                success: deleted,
-              }),
-            );
-          }
-        } catch (err) {
-          console.error("[browser-feedback-mcp] Error parsing message:", err);
+          ws.send(
+            JSON.stringify({
+              type: "feedback_deleted",
+              id: idToDelete,
+              success: deleted,
+            }),
+          );
         }
-      })();
+      } catch (err) {
+        console.error("[browser-feedback-mcp] Error parsing message:", err);
+      }
     });
 
     ws.on("close", () => {

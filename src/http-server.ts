@@ -16,7 +16,7 @@ import {
 } from "./session-store.ts";
 import type { FeedbackItem, PushResult } from "./server.ts";
 
-const MAX_BODY_BYTES = 16 * 1024 * 1024; // 16MB
+const MAX_BODY_BYTES = 16 * 1024 * 1024; // 16MB — headroom for MAX_SCREENSHOT_BYTES (10MB) + base64 expansion
 
 function parseJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
@@ -48,7 +48,7 @@ function parseJsonBody(req: http.IncomingMessage): Promise<Record<string, unknow
   });
 }
 
-export function broadcastPendingStatus(sessionId: string): void {
+function broadcastPendingStatus(sessionId: string): void {
   const status = getPendingSummary(getSessionPending(sessionId));
   const message = JSON.stringify({ type: "pending_status", ...status });
   for (const client of getSessionClients(sessionId)) {
@@ -147,9 +147,19 @@ export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: Htt
     }
 
     if (urlObj.pathname === "/broadcast" && req.method === "POST") {
-      const sessionId = urlObj.searchParams.get("session") || "unmatched";
       parseJsonBody(req)
-        .then((message) => {
+        .then((body) => {
+          const sessionId = (body.sessionId as string) || urlObj.searchParams.get("session") || "unmatched";
+          const processId = body.processId as string | undefined;
+          if (processId) {
+            const registered = sessionRegistry.get(sessionId);
+            if (!registered || registered.processId !== processId) {
+              res.writeHead(403, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Unauthorized: processId does not match" }));
+              return;
+            }
+          }
+          const message = body.message ?? body;
           const data = JSON.stringify(message);
           let sentCount = 0;
           for (const client of getSessionClients(sessionId)) {
@@ -244,6 +254,12 @@ export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: Htt
               );
             }
           }
+          const existing = sessionRegistry.get(data.sessionId as string);
+          if (existing && existing.processId && data.processId && existing.processId !== data.processId) {
+            res.writeHead(409, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Session already registered by another process" }));
+            return;
+          }
           sessionRegistry.set(data.sessionId as string, {
             sessionId: data.sessionId as string,
             processId: (data.processId as string) || null,
@@ -304,5 +320,5 @@ export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: Htt
     res.end("Not found");
   });
 
-  return { httpServer };
+  return { httpServer, broadcastPendingStatus };
 }

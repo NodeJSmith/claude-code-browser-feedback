@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix shutdown drain racing with hard exit — drain now completes before the hard-exit timer fires
+- Fix "Send to Claude" silently dropping feedback items submitted during an in-flight push
+- Fix reconnect flush losing partially-sent offline items on WebSocket failure
+- Fix `/broadcast` endpoint accepting unauthenticated messages (now validates processId)
+- Fix `/register-session` allowing any process to overwrite an existing session's owner
+
+### Changed
+
+- Unify `FeedbackItem` type into a single shared definition used by both server and widget
+- Replace base64 round-trip screenshot validation with simpler empty-buffer check
+- Thread `broadcastPendingStatus` through dependency injection instead of cross-module import
+
 ## [0.7.0] - 2026-05-12
 
 ### Fixed

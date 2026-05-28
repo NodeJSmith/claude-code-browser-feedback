@@ -1,7 +1,7 @@
 # Design: Push-Based Claude Code Channels
 
 **Date:** 2026-05-28
-**Status:** approved
+**Status:** archived
 **Scope-mode:** hold
 **Research:** /tmp/claude-research-channels/brief.md
 

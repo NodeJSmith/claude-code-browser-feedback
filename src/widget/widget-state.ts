@@ -1,28 +1,5 @@
-import type { ElementInfo } from "./widget-selection.ts";
-
-export interface FeedbackItem {
-  id: string;
-  timestamp: string;
-  url: string;
-  viewport: {
-    width: number;
-    height: number;
-    devicePixelRatio: number;
-  };
-  userAgent: string;
-  element: ElementInfo;
-  description: string;
-  screenshot: string | null;
-  consoleLogs: ConsoleLogEntry[];
-  selector?: string;
-}
-
-export interface ConsoleLogEntry {
-  type: string;
-  timestamp: string;
-  message: string;
-  stack?: string;
-}
+import type { FeedbackItem, ConsoleLogEntry } from "../shared-types.ts";
+export type { FeedbackItem, ConsoleLogEntry } from "../shared-types.ts";
 
 export const WIDGET_ID = "claude-feedback-widget";
 export const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

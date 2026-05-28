@@ -67,14 +67,15 @@ export function connectWebSocket(): void {
       updateButtonState();
       console.log("[Claude Feedback] Connected to feedback server");
       if (localPendingItems.length > 0) {
-        try {
-          for (const item of localPendingItems) {
+        const unsent: typeof localPendingItems = [];
+        for (const item of localPendingItems) {
+          try {
             socket.send(JSON.stringify({ type: "feedback", payload: item }));
+          } catch {
+            unsent.push(item);
           }
-          setLocalPendingItems([]);
-        } catch (err) {
-          console.warn("[Claude Feedback] Failed to flush pending items on reconnect:", err);
         }
+        setLocalPendingItems(unsent);
       }
     };
 

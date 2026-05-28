@@ -154,7 +154,6 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// Handle tool calls
 mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name } = request.params;
   const args = (request.params.arguments || {}) as Record<string, unknown>;

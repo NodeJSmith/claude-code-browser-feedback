@@ -64,7 +64,7 @@ describe("lifecycle: in-flight counter", () => {
   });
 
   it("in-flight count is zero before any push", async () => {
-    const { getInFlightCount } = createPushFeedbackWithCounter(mockServer.asServer, SESSION_ID);
+    const { getInFlightCount } = createPushFeedback({ mcpServer: mockServer.asServer, sessionId: SESSION_ID });
     expect(getInFlightCount()).toBe(0);
   });
 
@@ -77,10 +77,7 @@ describe("lifecycle: in-flight counter", () => {
         }),
     );
 
-    const { pushFeedback, getInFlightCount } = createPushFeedbackWithCounter(
-      mockServer.asServer,
-      SESSION_ID,
-    );
+    const { pushFeedback, getInFlightCount } = createPushFeedback({ mcpServer: mockServer.asServer, sessionId: SESSION_ID });
 
     const pushPromise = pushFeedback([makeItem()]);
 
@@ -95,10 +92,7 @@ describe("lifecycle: in-flight counter", () => {
 
   it("in-flight count decrements after push fails", async () => {
     mockServer.notification.mockRejectedValue(new Error("transport error"));
-    const { pushFeedback, getInFlightCount } = createPushFeedbackWithCounter(
-      mockServer.asServer,
-      SESSION_ID,
-    );
+    const { pushFeedback, getInFlightCount } = createPushFeedback({ mcpServer: mockServer.asServer, sessionId: SESSION_ID });
 
     const result = await pushFeedback([makeItem()]);
 
@@ -107,7 +101,7 @@ describe("lifecycle: in-flight counter", () => {
   }, 15000);
 
   it("drain resolves immediately when no calls are in flight", async () => {
-    const { drainInFlight } = createPushFeedbackWithCounter(mockServer.asServer, SESSION_ID);
+    const { drainInFlight } = createPushFeedback({ mcpServer: mockServer.asServer, sessionId: SESSION_ID });
     await expect(drainInFlight()).resolves.toBeUndefined();
   });
 
@@ -120,10 +114,7 @@ describe("lifecycle: in-flight counter", () => {
         }),
     );
 
-    const { pushFeedback, drainInFlight } = createPushFeedbackWithCounter(
-      mockServer.asServer,
-      SESSION_ID,
-    );
+    const { pushFeedback, drainInFlight } = createPushFeedback({ mcpServer: mockServer.asServer, sessionId: SESSION_ID });
 
     const pushPromise = pushFeedback([makeItem()]);
 
@@ -151,10 +142,7 @@ describe("lifecycle: in-flight counter", () => {
     // notification never resolves
     mockServer.notification.mockImplementation(() => new Promise(() => {}));
 
-    const { pushFeedback, drainInFlight } = createPushFeedbackWithCounter(
-      mockServer.asServer,
-      SESSION_ID,
-    );
+    const { pushFeedback, drainInFlight } = createPushFeedback({ mcpServer: mockServer.asServer, sessionId: SESSION_ID });
 
     void pushFeedback([makeItem()]);
 
@@ -199,10 +187,7 @@ describe("lifecycle: shutdown cleanup", () => {
         }),
     );
 
-    const { pushFeedback, drainInFlight } = createPushFeedbackWithCounter(
-      mockServer.asServer,
-      SESSION_ID,
-    );
+    const { pushFeedback, drainInFlight } = createPushFeedback({ mcpServer: mockServer.asServer, sessionId: SESSION_ID });
 
     const pushPromise = pushFeedback([makeItem()]);
 
@@ -225,7 +210,7 @@ describe("lifecycle: shutdown cleanup", () => {
   });
 
   it("cleanupScreenshots receives the correct session ID", async () => {
-    const { drainInFlight } = createPushFeedbackWithCounter(mockServer.asServer, SESSION_ID);
+    const { drainInFlight } = createPushFeedback({ mcpServer: mockServer.asServer, sessionId: SESSION_ID });
 
     await drainInFlight();
     screenshots.cleanupScreenshots(SESSION_ID);
@@ -235,10 +220,3 @@ describe("lifecycle: shutdown cleanup", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-function createPushFeedbackWithCounter(
-  mcpServer: Server,
-  sessionId: string,
-) {
-  return createPushFeedback({ mcpServer, sessionId });
-}

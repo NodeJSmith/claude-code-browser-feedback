@@ -29,17 +29,9 @@ export function saveScreenshot(id: string, dataUri: string, sessionId: string): 
 
   const base64Data = match[1];
 
-  let buf: Buffer;
-  try {
-    buf = Buffer.from(base64Data, "base64");
-    // Verify it decoded correctly — if the base64 was malformed, the buffer will be
-    // much smaller than expected or re-encoding won't round-trip
-    if (buf.toString("base64").replace(/=+$/, "") !== base64Data.replace(/=+$/, "")) {
-      console.error(`[browser-feedback-mcp] saveScreenshot: malformed base64 for item ${id}`);
-      return null;
-    }
-  } catch (err) {
-    console.error(`[browser-feedback-mcp] saveScreenshot: base64 decode failed for item ${id}: ${(err as Error).message}`);
+  const buf = Buffer.from(base64Data, "base64");
+  if (buf.length === 0) {
+    console.error(`[browser-feedback-mcp] saveScreenshot: empty base64 data for item ${id}`);
     return null;
   }
 
@@ -64,7 +56,6 @@ export function saveScreenshot(id: string, dataUri: string, sessionId: string): 
     console.error(
       `[browser-feedback-mcp] saveScreenshot: write failed for item ${id}: ${(err as Error).message}`
     );
-    // Clean up temp file if it exists
     try {
       fs.unlinkSync(tmp);
     } catch {
@@ -101,7 +92,6 @@ export function sweepOrphanScreenshots(activeSessions: string[]): void {
 
     const dirPath = path.join(screenshotDir, entry.name);
 
-    // Check if stale (mtime older than 7 days)
     let isStale = false;
     try {
       const stat = fs.statSync(dirPath);
@@ -115,8 +105,9 @@ export function sweepOrphanScreenshots(activeSessions: string[]): void {
     if (isOrphan || isStale) {
       try {
         fs.rmSync(dirPath, { recursive: true, force: true });
-        console.error(`[browser-feedback-mcp] sweepOrphanScreenshots: removed ${dirPath}`);
-      } catch (err) {
+        const reason = isOrphan ? "orphaned" : "stale (>7d)";
+        console.error(`[browser-feedback-mcp] sweepOrphanScreenshots: removed ${dirPath} (${reason})`);
+      } catch {
         /* silently ignore individual directory errors */
       }
     }
