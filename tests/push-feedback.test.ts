@@ -19,7 +19,18 @@ function makeItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
     screenshot: null,
     description: "test description",
     consoleLogs: [],
-    element: { selector: "div.foo", tagName: "div", id: null, className: null, fullSelector: "body > div.foo", text: null, innerHTML: null, outerHTML: null, attributes: {}, boundingRect: { top: 0, left: 0, width: 100, height: 50 } },
+    element: {
+      selector: "div.foo",
+      tagName: "div",
+      id: null,
+      className: null,
+      fullSelector: "body > div.foo",
+      text: null,
+      innerHTML: null,
+      outerHTML: null,
+      attributes: {},
+      boundingRect: { top: 0, left: 0, width: 100, height: 50 },
+    },
     url: "http://localhost:3000",
     timestamp: "2026-01-01T00:00:00.000Z",
     viewport: { width: 1024, height: 768, devicePixelRatio: 1 },
@@ -30,17 +41,18 @@ function makeItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
 
 describe("Server constructor capabilities", () => {
   it("Server constructor accepts channel capability without throwing", () => {
-    expect(() =>
-      new Server(
-        { name: "browser-feedback-mcp", version: "0.1.0" },
-        {
-          capabilities: {
-            experimental: { "claude/channel": {} },
-            tools: {},
+    expect(
+      () =>
+        new Server(
+          { name: "browser-feedback-mcp", version: "0.1.0" },
+          {
+            capabilities: {
+              experimental: { "claude/channel": {} },
+              tools: {},
+            },
+            instructions: MCP_INSTRUCTIONS,
           },
-          instructions: MCP_INSTRUCTIONS,
-        },
-      ),
+        ),
     ).not.toThrow();
   });
 
@@ -67,7 +79,9 @@ describe("createPushFeedback", () => {
     mockNotification = vi.fn().mockResolvedValue(undefined);
     mockMcpServer = { notification: mockNotification };
     vi.mocked(screenshots.saveScreenshot).mockReset();
-    vi.mocked(screenshots.saveScreenshot).mockReturnValue("/tmp/test-screenshots/session/item-1.png");
+    vi.mocked(screenshots.saveScreenshot).mockReturnValue(
+      "/tmp/test-screenshots/session/item-1.png",
+    );
   });
 
   afterEach(() => {
@@ -80,7 +94,11 @@ describe("createPushFeedback", () => {
 
     await pushFeedback([item], SESSION_ID);
 
-    expect(screenshots.saveScreenshot).toHaveBeenCalledWith("item-1", "data:image/png;base64,abc123", SESSION_ID);
+    expect(screenshots.saveScreenshot).toHaveBeenCalledWith(
+      "item-1",
+      "data:image/png;base64,abc123",
+      SESSION_ID,
+    );
   });
 
   it("does not call saveScreenshot for items without screenshots", async () => {
@@ -107,14 +125,27 @@ describe("createPushFeedback", () => {
     const payload = JSON.parse(call.params.content);
     expect(payload).toHaveLength(1);
     expect(payload[0].description).toBe("button looks wrong");
-    expect(payload[0].consoleLogs).toEqual([{ type: "error", timestamp: "2026-01-01T00:00:00.000Z", message: "JS error" }]);
+    expect(payload[0].consoleLogs).toEqual([
+      { type: "error", timestamp: "2026-01-01T00:00:00.000Z", message: "JS error" },
+    ]);
   });
 
   it("constructs notification content with system-derived data", async () => {
     const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server });
     const item = makeItem({
       id: "item-1",
-      element: { selector: "button.submit", tagName: "button", id: "btn", className: "submit", fullSelector: "body > button.submit", text: null, innerHTML: null, outerHTML: null, attributes: {}, boundingRect: { top: 0, left: 0, width: 80, height: 30 } },
+      element: {
+        selector: "button.submit",
+        tagName: "button",
+        id: "btn",
+        className: "submit",
+        fullSelector: "body > button.submit",
+        text: null,
+        innerHTML: null,
+        outerHTML: null,
+        attributes: {},
+        boundingRect: { top: 0, left: 0, width: 80, height: 30 },
+      },
       url: "http://localhost:3000/page",
       timestamp: "2026-05-28T12:00:00.000Z",
     });
@@ -218,17 +249,19 @@ describe("createPushFeedback", () => {
     const order: string[] = [];
     let resolveFirst!: () => void;
 
-    mockNotification.mockImplementationOnce(() => {
-      return new Promise<void>((resolve) => {
-        resolveFirst = () => {
-          order.push("first-done");
-          resolve();
-        };
+    mockNotification
+      .mockImplementationOnce(() => {
+        return new Promise<void>((resolve) => {
+          resolveFirst = () => {
+            order.push("first-done");
+            resolve();
+          };
+        });
+      })
+      .mockImplementationOnce(() => {
+        order.push("second-started");
+        return Promise.resolve();
       });
-    }).mockImplementationOnce(() => {
-      order.push("second-started");
-      return Promise.resolve();
-    });
 
     const { pushFeedback } = createPushFeedback({ mcpServer: mockMcpServer as unknown as Server });
 

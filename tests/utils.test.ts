@@ -33,7 +33,6 @@ describe("deriveSessionId", () => {
   });
 });
 
-
 describe("isValidSessionId", () => {
   it("accepts a valid lowercase UUID", () => {
     expect(isValidSessionId("550e8400-e29b-41d4-a716-446655440000")).toBe(true);
@@ -75,7 +74,6 @@ describe("isValidSessionId", () => {
     expect(isValidSessionId("550e8400e29b41d4a716446655440000")).toBe(false);
   });
 });
-
 
 describe("getPendingSummary", () => {
   it("returns empty summary for empty array", () => {
@@ -130,7 +128,6 @@ describe("getPendingSummary", () => {
     });
   });
 });
-
 
 describe("detectProjectUrl", () => {
   let tmpDir: string;

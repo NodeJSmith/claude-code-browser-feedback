@@ -6,10 +6,19 @@ import { isValidSessionId } from "./utils.ts";
 const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024; // 10MB decoded limit
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const SAFE_NAME_RE = /^[a-zA-Z0-9_-]+$/;
-const MIME_TO_EXT: Record<string, string> = { png: "png", jpeg: "jpg", webp: "webp", gif: "gif", "svg+xml": "svg" };
+const MIME_TO_EXT: Record<string, string> = {
+  png: "png",
+  jpeg: "jpg",
+  webp: "webp",
+  gif: "gif",
+  "svg+xml": "svg",
+};
 
 export function getScreenshotDir(): string {
-  return process.env.FEEDBACK_SCREENSHOT_DIR || path.join(os.tmpdir(), "claude-browser-feedback", "screenshots");
+  return (
+    process.env.FEEDBACK_SCREENSHOT_DIR ||
+    path.join(os.tmpdir(), "claude-browser-feedback", "screenshots")
+  );
 }
 
 export function saveScreenshot(id: string, dataUri: string, sessionId: string): string | null {
@@ -39,7 +48,7 @@ export function saveScreenshot(id: string, dataUri: string, sessionId: string): 
 
   if (buf.length > MAX_SCREENSHOT_BYTES) {
     console.error(
-      `[browser-feedback-mcp] saveScreenshot: decoded data exceeds 10MB limit for item ${id} (${buf.length} bytes)`
+      `[browser-feedback-mcp] saveScreenshot: decoded data exceeds 10MB limit for item ${id} (${buf.length} bytes)`,
     );
     return null;
   }
@@ -57,7 +66,7 @@ export function saveScreenshot(id: string, dataUri: string, sessionId: string): 
     return target;
   } catch (err) {
     console.error(
-      `[browser-feedback-mcp] saveScreenshot: write failed for item ${id}: ${(err as Error).message}`
+      `[browser-feedback-mcp] saveScreenshot: write failed for item ${id}: ${(err as Error).message}`,
     );
     try {
       fs.unlinkSync(tmp);
@@ -109,7 +118,9 @@ export function sweepOrphanScreenshots(activeSessions: string[]): void {
       try {
         fs.rmSync(dirPath, { recursive: true, force: true });
         const reason = isOrphan ? "orphaned" : "stale (>7d)";
-        console.error(`[browser-feedback-mcp] sweepOrphanScreenshots: removed ${dirPath} (${reason})`);
+        console.error(
+          `[browser-feedback-mcp] sweepOrphanScreenshots: removed ${dirPath} (${reason})`,
+        );
       } catch {
         /* silently ignore individual directory errors */
       }

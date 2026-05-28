@@ -39,7 +39,9 @@ export function resolveSessionFromScript(): string | null {
   if (document.currentScript && (document.currentScript as HTMLScriptElement).src) {
     candidates.push((document.currentScript as HTMLScriptElement).src);
   }
-  const tagged = document.getElementById("claude-feedback-widget-script") as HTMLScriptElement | null;
+  const tagged = document.getElementById(
+    "claude-feedback-widget-script",
+  ) as HTMLScriptElement | null;
   if (tagged && tagged.src) candidates.push(tagged.src);
   for (const src of candidates) {
     try {
@@ -193,7 +195,8 @@ function showSessionInvalidBanner(message: Record<string, unknown>): void {
   ].join(";");
   const text = document.createElement("span");
   text.textContent =
-    ((message.reason as string) || null) ||
+    (message.reason as string) ||
+    null ||
     "Claude feedback widget: session changed. Reload the page to reconnect.";
   const reload = document.createElement("button");
   reload.textContent = "Reload";

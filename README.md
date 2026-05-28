@@ -56,7 +56,10 @@ Or add manually to your Claude Code MCP configuration:
   "mcpServers": {
     "browser-feedback": {
       "command": "node",
-      "args": ["--experimental-strip-types", "/path/to/mcp-claude-code-browser-feedback/src/server.ts"],
+      "args": [
+        "--experimental-strip-types",
+        "/path/to/mcp-claude-code-browser-feedback/src/server.ts"
+      ],
       "env": {
         "FEEDBACK_PORT": "9877"
       }
@@ -232,11 +235,11 @@ Or for development-only loading:
 
 ### Environment Variables
 
-| Variable                   | Default                                           | Description                         |
-| -------------------------- | ------------------------------------------------- | ----------------------------------- |
-| `FEEDBACK_PORT`            | `9877`                                            | Port for HTTP/WebSocket server      |
-| `FEEDBACK_HOST`            | `127.0.0.1`                                       | Bind address for HTTP/WebSocket     |
-| `FEEDBACK_SCREENSHOT_DIR`  | `$TMPDIR/claude-browser-feedback/screenshots/`    | Directory where screenshots are saved |
+| Variable                  | Default                                        | Description                           |
+| ------------------------- | ---------------------------------------------- | ------------------------------------- |
+| `FEEDBACK_PORT`           | `9877`                                         | Port for HTTP/WebSocket server        |
+| `FEEDBACK_HOST`           | `127.0.0.1`                                    | Bind address for HTTP/WebSocket       |
+| `FEEDBACK_SCREENSHOT_DIR` | `$TMPDIR/claude-browser-feedback/screenshots/` | Directory where screenshots are saved |
 
 ## Screenshot Capture
 

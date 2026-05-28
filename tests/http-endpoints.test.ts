@@ -138,7 +138,9 @@ describe("session registration", () => {
     // Session still belongs to proc-1
     const sessionsResp = await fetch(`${BASE_URL}/sessions`);
     const sessionsData = await sessionsResp.json();
-    const found = sessionsData.sessions.find((s: Record<string, unknown>) => s.sessionId === sessionId);
+    const found = sessionsData.sessions.find(
+      (s: Record<string, unknown>) => s.sessionId === sessionId,
+    );
     expect(found).toBeDefined();
     expect(found.processId).toBe("proc-1");
 
@@ -173,7 +175,9 @@ describe("session registration", () => {
     // Session should still exist
     const sessionsResp = await fetch(`${BASE_URL}/sessions`);
     const sessionsData = await sessionsResp.json();
-    const found = sessionsData.sessions.find((s: Record<string, unknown>) => s.sessionId === sessionId);
+    const found = sessionsData.sessions.find(
+      (s: Record<string, unknown>) => s.sessionId === sessionId,
+    );
     expect(found).toBeDefined();
 
     // Clean up with correct processId
@@ -228,7 +232,9 @@ describe("broadcast endpoint", () => {
   });
 });
 
-function connectWs(sessionId: string | null): Promise<{ ws: WebSocket; msg: Record<string, unknown> }> {
+function connectWs(
+  sessionId: string | null,
+): Promise<{ ws: WebSocket; msg: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const url = sessionId
       ? `ws://localhost:${TEST_PORT}/ws?session=${sessionId}`
@@ -245,7 +251,10 @@ function connectWs(sessionId: string | null): Promise<{ ws: WebSocket; msg: Reco
   });
 }
 
-async function registerSession(sessionId: string, opts: { processId?: string; projectDir?: string } = {}) {
+async function registerSession(
+  sessionId: string,
+  opts: { processId?: string; projectDir?: string } = {},
+) {
   await fetch(`${BASE_URL}/register-session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -554,4 +563,3 @@ describe("parseJsonBody size limit", () => {
     expect(resp.status).toBe(413);
   });
 });
-

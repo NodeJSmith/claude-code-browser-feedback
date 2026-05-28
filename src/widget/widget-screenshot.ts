@@ -5,8 +5,7 @@ let html2canvasPromise: Promise<void> | null = null;
 declare const html2canvas: ((
   el: HTMLElement,
   opts: Record<string, unknown>,
-) => Promise<HTMLCanvasElement>) &
-  { toString(): string };
+) => Promise<HTMLCanvasElement>) & { toString(): string };
 
 export function loadHtml2Canvas(wsBaseUrl: string): Promise<void> {
   if (typeof html2canvas !== "undefined") return Promise.resolve();

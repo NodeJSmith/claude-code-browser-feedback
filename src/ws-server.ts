@@ -22,7 +22,12 @@ interface WsServerOptions {
   broadcastPendingStatus: (sessionId: string) => void;
 }
 
-export function createWsServer({ httpServer, port, pushFeedback, broadcastPendingStatus }: WsServerOptions) {
+export function createWsServer({
+  httpServer,
+  port,
+  pushFeedback,
+  broadcastPendingStatus,
+}: WsServerOptions) {
   const wss = new WebSocketServer({ server: httpServer, path: "/ws", clientTracking: true });
 
   wss.on("error", (err: Error) => {
@@ -157,7 +162,9 @@ export function createWsServer({ httpServer, port, pushFeedback, broadcastPendin
           const deleted = getSessionPending(sid).length < initialLength;
 
           if (deleted) {
-            console.error(`[browser-feedback-mcp] Deleted feedback: ${idToDelete} (session: ${sid})`);
+            console.error(
+              `[browser-feedback-mcp] Deleted feedback: ${idToDelete} (session: ${sid})`,
+            );
             broadcastPendingStatus(sid);
           }
 

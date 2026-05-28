@@ -21,9 +21,9 @@ describe("loadHtml2Canvas", () => {
   });
 
   it("builds correct URL from ws base URL", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("// mock script", { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("// mock script", { status: 200 }));
 
     await loadHtml2Canvas("ws://localhost:9877");
 
@@ -31,9 +31,9 @@ describe("loadHtml2Canvas", () => {
   });
 
   it("builds URL from non-default port", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("// mock", { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("// mock", { status: 200 }));
 
     await loadHtml2Canvas("ws://myhost:4000");
 
@@ -41,9 +41,9 @@ describe("loadHtml2Canvas", () => {
   });
 
   it("falls back to localhost:9877 for invalid ws URL", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("// mock", { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("// mock", { status: 200 }));
 
     await loadHtml2Canvas("not-a-url");
 
@@ -55,19 +55,23 @@ describe("loadHtml2Canvas", () => {
       new Response("Not Found", { status: 404, statusText: "Not Found" }),
     );
 
-    await expect(loadHtml2Canvas("ws://localhost:9877")).rejects.toThrow("Failed to load html2canvas");
+    await expect(loadHtml2Canvas("ws://localhost:9877")).rejects.toThrow(
+      "Failed to load html2canvas",
+    );
   });
 
   it("throws on network error", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network error"));
 
-    await expect(loadHtml2Canvas("ws://localhost:9877")).rejects.toThrow("Failed to load html2canvas");
+    await expect(loadHtml2Canvas("ws://localhost:9877")).rejects.toThrow(
+      "Failed to load html2canvas",
+    );
   });
 
   it("deduplicates concurrent calls", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("// mock", { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("// mock", { status: 200 }));
 
     await Promise.all([
       loadHtml2Canvas("ws://localhost:9877"),
