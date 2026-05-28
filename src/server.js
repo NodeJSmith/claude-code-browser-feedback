@@ -15,7 +15,7 @@ import {
   setHttpServerOwner,
   setSessionPending,
   setSessionReady,
-} from "./session-store.js";
+} from "./session-store.ts";
 import { createProxyClient } from "./proxy-client.js";
 import { createHttpServer } from "./http-server.js";
 import { createWsServer } from "./ws-server.js";

@@ -10,7 +10,7 @@ import {
   setSessionReady,
   getSessionResolvers,
   getSessionClients,
-} from "./session-store.js";
+} from "./session-store.ts";
 import { broadcastPendingStatus } from "./http-server.js";
 
 export function createWsServer({ httpServer, port }) {

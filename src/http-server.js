@@ -17,7 +17,7 @@ import {
   migrateOrphanInto,
   persistSession,
   deleteSession,
-} from "./session-store.js";
+} from "./session-store.ts";
 
 function parseJsonBody(req) {
   return new Promise((resolve, reject) => {
