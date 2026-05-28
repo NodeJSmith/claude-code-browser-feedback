@@ -18,7 +18,7 @@ interface SessionWebSocket extends WebSocket {
 interface WsServerOptions {
   httpServer: http.Server;
   port: number;
-  pushFeedback: (items: FeedbackItem[]) => Promise<PushResult>;
+  pushFeedback: (items: FeedbackItem[], sessionId: string) => Promise<PushResult>;
   broadcastPendingStatus: (sessionId: string) => void;
 }
 
@@ -124,17 +124,25 @@ export function createWsServer({ httpServer, port, pushFeedback, broadcastPendin
 
         if (message.type === "send_to_claude") {
           const items = [...getSessionPending(sid)] as FeedbackItem[];
-          const result = await pushFeedback(items);
-          if (result.ok) {
+          if (items.length === 0) {
+            ws.send(JSON.stringify({ type: "sent_to_claude", count: 0 }));
+          } else {
+            // Dequeue before push to prevent duplicate delivery from concurrent handlers
             const sentIds = new Set(items.map((i) => i.id));
             setSessionPending(
               sid,
               getSessionPending(sid).filter((f) => !sentIds.has((f as FeedbackItem).id)),
             );
             broadcastPendingStatus(sid);
-            ws.send(JSON.stringify({ type: "sent_to_claude", count: items.length }));
-          } else {
-            ws.send(JSON.stringify({ type: "push_failed", reason: result.reason }));
+
+            const result = await pushFeedback(items, sid);
+            if (result.ok) {
+              ws.send(JSON.stringify({ type: "sent_to_claude", count: items.length }));
+            } else {
+              setSessionPending(sid, [...items, ...getSessionPending(sid)]);
+              broadcastPendingStatus(sid);
+              ws.send(JSON.stringify({ type: "push_failed", reason: result.reason }));
+            }
           }
         }
 

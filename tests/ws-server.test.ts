@@ -85,7 +85,7 @@ describe("ws-server send_to_claude with pushFeedback", () => {
       ws.send(JSON.stringify({ type: "send_to_claude" }));
       const reply = await nextMessageOfType(ws, "sent_to_claude");
 
-      expect(pushFeedback).toHaveBeenCalledWith([item]);
+      expect(pushFeedback).toHaveBeenCalledWith([item], SESSION_ID);
       expect(reply.type).toBe("sent_to_claude");
       expect(reply.count).toBe(1);
     } finally {

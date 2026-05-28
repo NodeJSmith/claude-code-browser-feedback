@@ -44,20 +44,19 @@ const PUSH_RETRY_DELAY_MS = 1000;
 
 interface PushFeedbackOptions {
   mcpServer: Server;
-  sessionId: string;
 }
 
 export interface PushFeedbackHandle {
-  pushFeedback: (items: FeedbackItem[]) => Promise<PushResult>;
+  pushFeedback: (items: FeedbackItem[], sessionId: string) => Promise<PushResult>;
   drainInFlight: (timeoutMs?: number) => Promise<void>;
   getInFlightCount: () => number;
 }
 
-export function createPushFeedback({ mcpServer, sessionId }: PushFeedbackOptions): PushFeedbackHandle {
+export function createPushFeedback({ mcpServer }: PushFeedbackOptions): PushFeedbackHandle {
   let tail: Promise<PushResult> = Promise.resolve({ ok: true });
   let inFlightCount = 0;
 
-  async function doPush(items: FeedbackItem[]): Promise<PushResult> {
+  async function doPush(items: FeedbackItem[], sessionId: string): Promise<PushResult> {
     const screenshotPaths: (string | null)[] = [];
     for (const item of items) {
       screenshotPaths.push(
@@ -99,9 +98,9 @@ export function createPushFeedback({ mcpServer, sessionId }: PushFeedbackOptions
     return { ok: false, reason: "unreachable" };
   }
 
-  function pushFeedback(items: FeedbackItem[]): Promise<PushResult> {
+  function pushFeedback(items: FeedbackItem[], sessionId: string): Promise<PushResult> {
     inFlightCount++;
-    const next = tail.then(() => doPush(items)).finally(() => {
+    const next = tail.then(() => doPush(items, sessionId)).finally(() => {
       inFlightCount--;
     });
     tail = next.catch(() => ({ ok: false, reason: "chain-recovery" }) as PushResult);
@@ -145,13 +144,13 @@ const mcpServer = new Server(
   },
 );
 
-const handle = createPushFeedback({ mcpServer, sessionId: SESSION_ID });
+const handle = createPushFeedback({ mcpServer });
 
-function pushFeedback(items: FeedbackItem[]): Promise<PushResult> {
+function pushFeedback(items: FeedbackItem[], sessionId: string): Promise<PushResult> {
   if (isHttpServerOwner()) {
-    return handle.pushFeedback(items);
+    return handle.pushFeedback(items, sessionId);
   }
-  return proxy.pushFeedbackViaHttp(items) as Promise<PushResult>;
+  return proxy.pushFeedbackViaHttp(items, sessionId) as Promise<PushResult>;
 }
 
 const { httpServer, broadcastPendingStatus } = createHttpServer({ port: PORT, pkgVersion: PKG_VERSION, srcDir: __dirname, pushFeedback });

@@ -62,7 +62,7 @@ interface HttpServerOptions {
   port: number;
   pkgVersion: string;
   srcDir: string;
-  pushFeedback: (items: FeedbackItem[]) => Promise<PushResult>;
+  pushFeedback: (items: FeedbackItem[], sessionId: string) => Promise<PushResult>;
 }
 
 export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: HttpServerOptions) {
@@ -151,9 +151,9 @@ export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: Htt
         .then((body) => {
           const sessionId = (body.sessionId as string) || urlObj.searchParams.get("session") || "unmatched";
           const processId = body.processId as string | undefined;
-          if (processId) {
-            const registered = sessionRegistry.get(sessionId);
-            if (!registered || registered.processId !== processId) {
+          const registered = sessionRegistry.get(sessionId);
+          if (registered && registered.processId) {
+            if (!processId || registered.processId !== processId) {
               res.writeHead(403, { "Content-Type": "application/json" });
               res.end(JSON.stringify({ error: "Unauthorized: processId does not match" }));
               return;
@@ -200,7 +200,7 @@ export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: Htt
             return;
           }
           const items = data.items as FeedbackItem[];
-          const result = await pushFeedback(items);
+          const result = await pushFeedback(items, sessionId);
           res.writeHead(result.ok ? 200 : 502, { "Content-Type": "application/json" });
           res.end(JSON.stringify(result));
         })
@@ -255,14 +255,21 @@ export function createHttpServer({ port, pkgVersion, srcDir, pushFeedback }: Htt
             }
           }
           const existing = sessionRegistry.get(data.sessionId as string);
-          if (existing && existing.processId && data.processId && existing.processId !== data.processId) {
-            res.writeHead(409, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Session already registered by another process" }));
-            return;
+          if (existing && existing.processId) {
+            if (data.processId && existing.processId !== data.processId) {
+              res.writeHead(409, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Session already registered by another process" }));
+              return;
+            }
+            if (!data.processId) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "processId required for already-owned session" }));
+              return;
+            }
           }
           sessionRegistry.set(data.sessionId as string, {
             sessionId: data.sessionId as string,
-            processId: (data.processId as string) || null,
+            processId: (data.processId as string) || (existing?.processId ?? null),
             projectDir: data.projectDir as string,
             projectUrl: (data.projectUrl as string) || null,
             detectedFrom: (data.detectedFrom as string) || null,

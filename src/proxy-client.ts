@@ -42,12 +42,12 @@ export function createProxyClient({ port, sessionId, processId, projectDir }: Pr
     return null;
   }
 
-  async function pushFeedbackViaHttp(items: unknown[]): Promise<{ ok: boolean; reason?: string }> {
+  async function pushFeedbackViaHttp(items: unknown[], targetSessionId?: string): Promise<{ ok: boolean; reason?: string }> {
     try {
       const response = await fetch(`${baseUrl}/push-notification`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, processId, items }),
+        body: JSON.stringify({ sessionId: targetSessionId ?? sessionId, processId, items }),
         signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
       });
       if (response.ok) {
