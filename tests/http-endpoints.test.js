@@ -6,7 +6,7 @@ import crypto from "node:crypto";
 import WebSocket from "ws";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SERVER_PATH = path.join(__dirname, "..", "src", "server.js");
+const SERVER_PATH = path.join(__dirname, "..", "src", "server.ts");
 const TEST_PORT = 19877;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
 

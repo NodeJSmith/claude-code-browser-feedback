@@ -3,13 +3,13 @@
   "version": "0.7.0",
   "description": "MCP server for collecting visual browser feedback and sending to Claude Code",
   "type": "module",
-  "main": "src/server.js",
+  "main": "src/server.ts",
   "bin": {
-    "browser-feedback-mcp": "./src/server.js"
+    "browser-feedback-mcp": "./src/server.ts"
   },
   "scripts": {
     "typecheck": "tsc",
-    "start": "node --experimental-strip-types src/server.js",
+    "start": "node --experimental-strip-types src/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",

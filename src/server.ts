@@ -29,119 +29,80 @@ const PKG_VERSION = JSON.parse(
   fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"),
 ).version;
 
-// Session identity for this MCP server process
 const PROJECT_DIR = process.cwd();
 const SESSION_ID = deriveSessionId(PROJECT_DIR);
 const PROCESS_ID = crypto.randomUUID();
 const proxy = createProxyClient({ port: PORT, sessionId: SESSION_ID, processId: PROCESS_ID, projectDir: PROJECT_DIR });
 
-
 const { httpServer } = createHttpServer({ port: PORT, pkgVersion: PKG_VERSION, srcDir: __dirname });
-
 const { wss, broadcast } = createWsServer({ httpServer, port: PORT });
 
-// ============================================
-// MCP Server - interface for Claude Code
-// ============================================
-
 const mcpServer = new Server(
-  {
-    name: "browser-feedback-mcp",
-    version: "0.1.0",
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  },
+  { name: "browser-feedback-mcp", version: "0.1.0" },
+  { capabilities: { tools: {} } },
 );
 
 registerMcpHandlers({ mcpServer, port: PORT, sessionId: SESSION_ID, srcDir: __dirname, proxy, broadcast });
 
-
-// ============================================
-// Graceful shutdown handling
-// ============================================
-
 let isShuttingDown = false;
 
-function shutdown(reason) {
+function shutdown(reason: string): void {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
   console.error(`[browser-feedback-mcp] Shutting down: ${reason}`);
 
-  // Only close HTTP server if we own it
   if (isHttpServerOwner()) {
-    // Flush any pending disk writes before exiting so debounced feedback
-    // isn't lost on shutdown.
     try {
       storage.flushAll();
     } catch {
       /* ignore */
     }
 
-    // Remove own session from registry only if we still own it
     const ownSession = sessionRegistry.get(SESSION_ID);
     if (ownSession && ownSession.processId === PROCESS_ID) {
       sessionRegistry.delete(SESSION_ID);
     }
 
-    // Close all WebSocket connections
     for (const client of connectedClients) {
       try {
         client.close();
-      } catch (err) {
+      } catch {
         // Ignore errors during shutdown
       }
     }
 
-    // Close the WebSocket server
     wss.close(() => {
       console.error("[browser-feedback-mcp] WebSocket server closed");
     });
 
-    // Close the HTTP server
     httpServer.close(() => {
       console.error("[browser-feedback-mcp] HTTP server closed");
       process.exit(0);
     });
 
-    // Force exit after timeout if graceful shutdown fails
     setTimeout(() => {
       console.error("[browser-feedback-mcp] Forcing exit after timeout");
       process.exit(0);
     }, 2000);
   } else {
-    // Unregister from owner server before exit
     proxy.unregisterSession().finally(() => {
       process.exit(0);
     });
-    // Force exit after timeout
     setTimeout(() => process.exit(0), 2000);
   }
 }
 
-// Listen for stdin close (MCP client disconnected)
 process.stdin.on("end", () => shutdown("stdin ended"));
 process.stdin.on("close", () => shutdown("stdin closed"));
-
-// Handle signals
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-// ============================================
-// Start servers
-// ============================================
-
-// Try to bind the HTTP server with health-check-and-retry for stale processes.
-// When EADDRINUSE/EPERM occurs, we check if the existing server is healthy (GET /status).
-// If healthy, we accept proxy mode. If not (zombie process), we wait and retry.
-async function tryListenWithRetry(maxRetries = 3, retryDelay = 1000) {
+async function tryListenWithRetry(maxRetries = 3, retryDelay = 1000): Promise<void> {
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     try {
-      await new Promise((resolve, reject) => {
-        const onError = (err) => {
+      await new Promise<void>((resolve, reject) => {
+        const onError = (err: Error) => {
           httpServer.removeListener("error", onError);
           reject(err);
         };
@@ -151,7 +112,6 @@ async function tryListenWithRetry(maxRetries = 3, retryDelay = 1000) {
           resolve();
         });
       });
-      // Successfully bound the port
       setHttpServerOwner(true);
       console.error(
         `[browser-feedback-mcp] HTTP/WebSocket server running on http://localhost:${PORT}`,
@@ -161,22 +121,20 @@ async function tryListenWithRetry(maxRetries = 3, retryDelay = 1000) {
       );
       return;
     } catch (err) {
-      if (err.code !== "EADDRINUSE" && err.code !== "EPERM") {
+      if ((err as NodeJS.ErrnoException).code !== "EADDRINUSE" && (err as NodeJS.ErrnoException).code !== "EPERM") {
         console.error(`[browser-feedback-mcp] HTTP server error:`, err);
-        return; // Non-retryable error, fall back to proxy mode
+        return;
       }
 
-      // Port in use — check if the existing server is actually healthy
       const status = await proxy.fetchServerStatus();
       if (status) {
         console.error(`[browser-feedback-mcp] Port ${PORT} is in use by a healthy server.`);
         console.error(
           `[browser-feedback-mcp] MCP tools will proxy requests to the running server.`,
         );
-        return; // Healthy server exists, use proxy mode
+        return;
       }
 
-      // Server on the port is unresponsive (zombie/stale process)
       if (attempt <= maxRetries) {
         console.error(
           `[browser-feedback-mcp] Port ${PORT} is held by an unresponsive process. Retrying in ${retryDelay}ms... (attempt ${attempt}/${maxRetries})`,
@@ -191,20 +149,15 @@ async function tryListenWithRetry(maxRetries = 3, retryDelay = 1000) {
   }
 }
 
-async function main() {
-  // Start MCP server first (this is the critical part for Claude Code)
+async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await mcpServer.connect(transport);
   console.error("[browser-feedback-mcp] MCP server connected via stdio");
 
-  // Start HTTP/WebSocket server (may fail if port is in use, but MCP will still work)
   await tryListenWithRetry();
 
-  // Register this session
   const detected = detectProjectUrl(PROJECT_DIR);
   if (isHttpServerOwner()) {
-    // Rehydrate any persisted feedback queues from disk so feedback submitted
-    // before a crash/restart isn't lost (fix for #46).
     try {
       for (const sid of storage.listSessions()) {
         const { pending, ready } = storage.load(sid);
@@ -217,9 +170,8 @@ async function main() {
         }
       }
     } catch (err) {
-      console.error(`[browser-feedback-mcp] Rehydrate failed: ${err.message}`);
+      console.error(`[browser-feedback-mcp] Rehydrate failed: ${(err as Error).message}`);
     }
-    // Owner registers directly
     sessionRegistry.set(SESSION_ID, {
       sessionId: SESSION_ID,
       processId: PROCESS_ID,
@@ -230,7 +182,6 @@ async function main() {
     });
     console.error(`[browser-feedback-mcp] Session: ${SESSION_ID}`);
   } else {
-    // Proxy registers via HTTP
     await proxy.registerSession();
     console.error(`[browser-feedback-mcp] Session registered: ${SESSION_ID}`);
   }
