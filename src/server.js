@@ -16,7 +16,7 @@ import {
   setSessionPending,
   setSessionReady,
 } from "./session-store.ts";
-import { createProxyClient } from "./proxy-client.js";
+import { createProxyClient } from "./proxy-client.ts";
 import { createHttpServer } from "./http-server.js";
 import { createWsServer } from "./ws-server.js";
 import { registerMcpHandlers } from "./mcp-tools.js";
