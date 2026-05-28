@@ -1,3 +1,4 @@
+import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { getPendingSummary } from "./utils.ts";
 import {
@@ -13,18 +14,27 @@ import {
 } from "./session-store.ts";
 import { broadcastPendingStatus } from "./http-server.ts";
 
-export function createWsServer({ httpServer, port }) {
+interface SessionWebSocket extends WebSocket {
+  _sessionId: string;
+}
+
+interface WsServerOptions {
+  httpServer: http.Server;
+  port: number;
+}
+
+export function createWsServer({ httpServer, port }: WsServerOptions) {
   const wss = new WebSocketServer({ server: httpServer, path: "/ws", clientTracking: true });
 
-  wss.on("error", (err) => {
+  wss.on("error", (err: Error) => {
     console.error("[browser-feedback-mcp] WebSocket server error:", err.message);
   });
 
-  wss.on("connection", (ws, req) => {
-    const reqUrl = new URL(req.url, `http://localhost:${port}`);
+  wss.on("connection", (ws: SessionWebSocket, req) => {
+    const reqUrl = new URL(req.url!, `http://localhost:${port}`);
     const rawSession = reqUrl.searchParams.get("session");
     let sessionId = rawSession || "unmatched";
-    let rebindReason = null;
+    let rebindReason: { from: string; to: string } | null = null;
 
     if (rawSession && !sessionRegistry.has(rawSession)) {
       const registered = Array.from(sessionRegistry.keys());
@@ -71,7 +81,7 @@ export function createWsServer({ httpServer, port }) {
       `[browser-feedback-mcp] Client connected (session: ${sessionId}). Total: ${connectedClients.size}`,
     );
 
-    const connectionMsg = {
+    const connectionMsg: Record<string, unknown> = {
       type: "connected",
       message: "Connected to Claude Code feedback server",
       sessionId,
@@ -94,14 +104,15 @@ export function createWsServer({ httpServer, port }) {
 
     ws.on("message", (data) => {
       try {
-        const message = JSON.parse(data.toString());
+        const message = JSON.parse(data.toString()) as Record<string, unknown>;
         const sid = ws._sessionId;
 
         if (message.type === "feedback") {
           console.error(`[browser-feedback-mcp] Received feedback from browser (session: ${sid})`);
 
-          const feedback = {
-            ...message.payload,
+          const payload = message.payload as Record<string, unknown>;
+          const feedback: Record<string, unknown> = {
+            ...payload,
             receivedAt: new Date().toISOString(),
           };
 
@@ -124,7 +135,7 @@ export function createWsServer({ httpServer, port }) {
           const resolvers = getSessionResolvers(sid);
           if (resolvers.length > 0) {
             while (resolvers.length > 0) {
-              const resolver = resolvers.shift();
+              const resolver = resolvers.shift()!;
               resolver([...ready]);
             }
             setSessionReady(sid, []);
@@ -133,14 +144,14 @@ export function createWsServer({ httpServer, port }) {
           ws.send(
             JSON.stringify({
               type: "sent_to_claude",
-              count: count,
+              count,
             }),
           );
         }
 
         if (message.type === "delete_feedback") {
-          const idToDelete = message.id;
-          const pending = getSessionPending(sid);
+          const idToDelete = message.id as string;
+          const pending = getSessionPending(sid) as { id?: string }[];
           const initialLength = pending.length;
           setSessionPending(
             sid,
@@ -175,7 +186,7 @@ export function createWsServer({ httpServer, port }) {
     });
   });
 
-  function broadcast(message, sessionId) {
+  function broadcast(message: unknown, sessionId?: string): void {
     const data = JSON.stringify(message);
     const clients = sessionId ? getSessionClients(sessionId) : connectedClients;
     for (const client of clients) {

@@ -18,7 +18,7 @@ import {
 } from "./session-store.ts";
 import { createProxyClient } from "./proxy-client.ts";
 import { createHttpServer } from "./http-server.ts";
-import { createWsServer } from "./ws-server.js";
+import { createWsServer } from "./ws-server.ts";
 import { registerMcpHandlers } from "./mcp-tools.js";
 
 const __filename = fileURLToPath(import.meta.url);
