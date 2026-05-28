@@ -10,11 +10,7 @@ import {
   connectedClients,
   getSessionPending,
   setSessionPending,
-  getSessionReady,
-  setSessionReady,
   getSessionClients,
-  findOrphanBuckets,
-  migrateOrphanInto,
   persistSession,
   deleteSession,
 } from "./session-store.ts";
@@ -126,77 +122,9 @@ export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions
         connectedClients: sessionId ? getSessionClients(sessionId).size : connectedClients.size,
         pendingFeedback: sessionId ? getSessionPending(sessionId).length : 0,
         sessions: sessionRegistry.size,
-        orphanSessions: findOrphanBuckets(),
       };
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(response));
-      return;
-    }
-
-    if (urlObj.pathname === "/feedback" && req.method === "GET") {
-      const shouldClear = urlObj.searchParams.get("clear") !== "false";
-      const sessionId = urlObj.searchParams.get("session") || "unmatched";
-      const sessionReady = getSessionReady(sessionId);
-      let feedback = [...sessionReady];
-      if (shouldClear) {
-        setSessionReady(sessionId, []);
-      }
-      let orphans = findOrphanBuckets();
-      if (feedback.length === 0 && isValidSessionId(sessionId) && sessionRegistry.has(sessionId)) {
-        if (orphans.length > 0 && sessionRegistry.size === 1) {
-          for (const o of orphans) {
-            console.error(
-              `[browser-feedback-mcp] /feedback rescuing orphan ${o.sessionId} into ${sessionId}`,
-            );
-            migrateOrphanInto(sessionId, o.sessionId);
-          }
-          const rescuedReady = getSessionReady(sessionId);
-          const rescuedPending = getSessionPending(sessionId);
-          feedback = [...rescuedReady, ...rescuedPending];
-          if (shouldClear) {
-            setSessionReady(sessionId, []);
-            setSessionPending(sessionId, []);
-          }
-          orphans = [];
-        }
-      } else {
-        orphans = [];
-      }
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ feedback, orphans }));
-      return;
-    }
-
-    if (urlObj.pathname === "/pending-summary" && req.method === "GET") {
-      const sessionId = urlObj.searchParams.get("session") || "unmatched";
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(getPendingSummary(getSessionPending(sessionId))));
-      return;
-    }
-
-    const deleteMatch = urlObj.pathname.match(/^\/feedback\/([^/]+)$/);
-    if (deleteMatch && req.method === "DELETE") {
-      const idToDelete = deleteMatch[1];
-      const sessionId = urlObj.searchParams.get("session") || "unmatched";
-      const pending = getSessionPending(sessionId) as { id?: string }[];
-      const initialLength = pending.length;
-      setSessionPending(
-        sessionId,
-        pending.filter((f) => f.id !== idToDelete),
-      );
-      const deleted = getSessionPending(sessionId).length < initialLength;
-
-      if (deleted) {
-        broadcastPendingStatus(sessionId);
-      }
-
-      res.writeHead(deleted ? 200 : 404, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          success: deleted,
-          message: deleted ? "Feedback deleted" : "Feedback not found",
-        }),
-      );
       return;
     }
 
@@ -242,10 +170,6 @@ export function createHttpServer({ port, pkgVersion, srcDir }: HttpServerOptions
               const oldPending = getSessionPending(existingId);
               if (oldPending.length > 0) {
                 getSessionPending(data.sessionId as string).push(...oldPending);
-              }
-              const oldReady = getSessionReady(existingId);
-              if (oldReady.length > 0) {
-                getSessionReady(data.sessionId as string).push(...oldReady);
               }
               const oldClients = getSessionClients(existingId);
               if (oldClients.size > 0) {

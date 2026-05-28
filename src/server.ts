@@ -14,7 +14,6 @@ import {
   isHttpServerOwner,
   setHttpServerOwner,
   setSessionPending,
-  setSessionReady,
 } from "./session-store.ts";
 import { createProxyClient } from "./proxy-client.ts";
 import { createHttpServer } from "./http-server.ts";
@@ -254,12 +253,11 @@ async function main(): Promise<void> {
   if (isHttpServerOwner()) {
     try {
       for (const sid of storage.listSessions()) {
-        const { pending, ready } = storage.load(sid);
-        if (pending.length || ready.length) {
+        const { pending } = storage.load(sid);
+        if (pending.length) {
           setSessionPending(sid, pending);
-          setSessionReady(sid, ready);
           console.error(
-            `[browser-feedback-mcp] Rehydrated session ${sid}: ${pending.length} pending, ${ready.length} ready`,
+            `[browser-feedback-mcp] Rehydrated session ${sid}: ${pending.length} pending`,
           );
         }
       }

@@ -183,24 +183,6 @@ describe("session-scoped data isolation", () => {
     expect(data.connectedClients).toBe(0);
     expect(data.pendingFeedback).toBe(0);
   });
-
-  it("GET /feedback?session=<id> returns empty for unknown session", async () => {
-    const unknownId = crypto.randomUUID();
-    const resp = await fetch(`${BASE_URL}/feedback?session=${unknownId}`);
-    expect(resp.status).toBe(200);
-    const data = await resp.json();
-    expect(data.feedback).toEqual([]);
-  });
-
-  it("DELETE /feedback/<id>?session=<id> returns 404 for non-existent item", async () => {
-    const unknownId = crypto.randomUUID();
-    const resp = await fetch(`${BASE_URL}/feedback/nonexistent?session=${unknownId}`, {
-      method: "DELETE",
-    });
-    expect(resp.status).toBe(404);
-    const data = await resp.json();
-    expect(data.success).toBe(false);
-  });
 });
 
 // Broadcast Endpoint
@@ -439,18 +421,3 @@ describe("WebSocket session routing", () => {
   });
 });
 
-// Orphan bucket reporting (Layer 4 of #46)
-
-describe("orphan bucket reporting", () => {
-  it("GET /status exposes orphanSessions field", async () => {
-    const resp = await fetch(`${BASE_URL}/status`);
-    const data = await resp.json();
-    expect(Array.isArray(data.orphanSessions)).toBe(true);
-  });
-
-  it("GET /feedback exposes orphans field", async () => {
-    const resp = await fetch(`${BASE_URL}/feedback?session=${crypto.randomUUID()}`);
-    const data = await resp.json();
-    expect(Array.isArray(data.orphans)).toBe(true);
-  });
-});

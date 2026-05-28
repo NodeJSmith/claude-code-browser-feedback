@@ -7,7 +7,6 @@ import {
   isValidSessionId,
   getPendingSummary,
   detectProjectUrl,
-  formatFeedbackAsContent,
 } from "../src/utils.ts";
 
 describe("deriveSessionId", () => {
@@ -132,70 +131,6 @@ describe("getPendingSummary", () => {
   });
 });
 
-
-describe("formatFeedbackAsContent", () => {
-  it("returns a text block for a single item without screenshot", () => {
-    const item = { id: "fb-1", description: "Test" };
-    const result = formatFeedbackAsContent([item]);
-    expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("text");
-    expect(JSON.parse(result[0].text)).toEqual(item);
-  });
-
-  it("returns text + image blocks for item with valid data URL screenshot", () => {
-    const item = {
-      id: "fb-2",
-      screenshot: "data:image/png;base64,iVBORw0KGgo=",
-    };
-    const result = formatFeedbackAsContent([item]);
-    expect(result).toHaveLength(2);
-    expect(result[0].type).toBe("text");
-    expect(result[1]).toEqual({
-      type: "image",
-      data: "iVBORw0KGgo=",
-      mimeType: "image/png",
-    });
-  });
-
-  it("excludes screenshot from the text JSON", () => {
-    const item = {
-      id: "fb-3",
-      description: "With screenshot",
-      screenshot: "data:image/jpeg;base64,abc123",
-    };
-    const result = formatFeedbackAsContent([item]);
-    const parsed = JSON.parse(result[0].text);
-    expect(parsed.screenshot).toBeUndefined();
-    expect(parsed.id).toBe("fb-3");
-  });
-
-  it("does not produce image block for invalid screenshot URL", () => {
-    const item = { id: "fb-4", screenshot: "https://example.com/img.png" };
-    const result = formatFeedbackAsContent([item]);
-    expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("text");
-  });
-
-  it("adds count header for multiple items", () => {
-    const items = [
-      { id: "fb-5", description: "First" },
-      { id: "fb-6", description: "Second" },
-    ];
-    const result = formatFeedbackAsContent(items);
-    expect(result[0]).toEqual({
-      type: "text",
-      text: "Received 2 feedback item(s):",
-    });
-    expect(result).toHaveLength(3); // header + 2 text blocks
-  });
-
-  it("coerces a non-array single item to array", () => {
-    const item = { id: "fb-7" };
-    const result = formatFeedbackAsContent(item);
-    expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("text");
-  });
-});
 
 describe("detectProjectUrl", () => {
   let tmpDir: string;

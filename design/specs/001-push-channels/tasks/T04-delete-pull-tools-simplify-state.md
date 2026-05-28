@@ -1,7 +1,7 @@
 ---
 task_id: "T04"
 title: "Delete pull-based tools and simplify session state"
-status: "planned"
+status: "done"
 depends_on: ["T03"]
 implements: ["FR#7", "FR#8", "AC#4", "AC#5"]
 ---
