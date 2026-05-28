@@ -4,7 +4,7 @@ import path from "path";
 import * as storage from "../src/storage.ts";
 import { deriveSessionId } from "../src/utils.ts";
 
-function makeSessionId(seed) {
+function makeSessionId(seed: string): string {
   return deriveSessionId(`/tmp/storage-test-${seed}-${Date.now()}-${Math.random()}`);
 }
 
@@ -17,7 +17,7 @@ function flushDelay() {
 describe("storage", () => {
   // Each test uses a unique session ID so they don't collide on the shared
   // tmpdir directory.
-  let sid;
+  let sid: string;
 
   beforeEach(() => {
     sid = makeSessionId("case");

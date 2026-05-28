@@ -13,6 +13,7 @@ npm install          # Install dependencies
 npm run build:widget # Bundle widget TS modules into dist/widget.js (esbuild)
 npm start            # Run the MCP server (auto-builds widget via prestart)
 npm test             # Run tests (vitest)
+npm run test:coverage # Run tests with coverage report
 npm run test:watch   # Run tests in watch mode
 npm run typecheck    # Type-check with tsc (no emit)
 npm run lint         # ESLint
@@ -66,7 +67,7 @@ Work these in order — each depends on the previous:
 
 2. **#2 Convert to Claude Code channels** — Add `experimental.claude/channel` capability. Push feedback via `mcp.notification()` instead of polling. Save screenshots to disk, include file path in channel message. Delete pull-based tools (`wait_for_browser_feedback`, `get_pending_feedback`, etc.), keep on-demand tools (`install_widget`, `get_connection_status`, `request_annotation`, etc.). Add sender gating for prompt injection prevention.
 
-3. **#3 Testing backfill** — Widget modules now have zero test coverage. Backfill widget tests (each module is independently testable), update existing tests for channels architecture, add coverage enforcement (80%+ target).
+3. **#3 Testing backfill** — Done. All 7 widget modules have test coverage (200 tests across 11 files). Existing test files converted from JS to TS. Coverage enforcement via `vitest --coverage` with per-directory thresholds (75%+ statements/lines for widget code). DOM tests use happy-dom environment.
 
 ## Configuration
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "node:crypto";
@@ -10,7 +10,7 @@ const SERVER_PATH = path.join(__dirname, "..", "src", "server.ts");
 const TEST_PORT = 19877;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
 
-let serverProcess;
+let serverProcess: ChildProcess;
 
 async function waitForServer(maxRetries = 20, delay = 250) {
   for (let i = 0; i < maxRetries; i++) {
@@ -43,9 +43,7 @@ afterAll(() => {
   }
 });
 
-// ============================================
 // HTTP Basics
-// ============================================
 
 describe("HTTP basics", () => {
   it("GET /status returns 200 with expected shape", async () => {
@@ -65,9 +63,7 @@ describe("HTTP basics", () => {
   });
 });
 
-// ============================================
 // Session Registration Lifecycle
-// ============================================
 
 describe("session registration", () => {
   const testSessionId = crypto.randomUUID();
@@ -176,9 +172,7 @@ describe("session registration", () => {
   });
 });
 
-// ============================================
 // Session-Scoped Data Isolation
-// ============================================
 
 describe("session-scoped data isolation", () => {
   it("GET /status?session=<id> returns zero counts for unknown session", async () => {
@@ -209,9 +203,7 @@ describe("session-scoped data isolation", () => {
   });
 });
 
-// ============================================
 // Broadcast Endpoint
-// ============================================
 
 describe("broadcast endpoint", () => {
   it("POST /broadcast with valid JSON returns 200", async () => {
@@ -236,11 +228,9 @@ describe("broadcast endpoint", () => {
   });
 });
 
-// ============================================
 // WebSocket Session Routing
-// ============================================
 
-function connectWs(sessionId) {
+function connectWs(sessionId: string | null): Promise<{ ws: WebSocket; msg: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const url = sessionId
       ? `ws://localhost:${TEST_PORT}/ws?session=${sessionId}`
@@ -257,7 +247,7 @@ function connectWs(sessionId) {
   });
 }
 
-async function registerSession(sessionId, opts = {}) {
+async function registerSession(sessionId: string, opts: { processId?: string; projectDir?: string } = {}) {
   await fetch(`${BASE_URL}/register-session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -268,7 +258,7 @@ async function registerSession(sessionId, opts = {}) {
     }),
   });
 }
-async function unregisterSession(sessionId, processId) {
+async function unregisterSession(sessionId: string, processId?: string) {
   await fetch(`${BASE_URL}/unregister-session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -449,9 +439,7 @@ describe("WebSocket session routing", () => {
   });
 });
 
-// ============================================
 // Orphan bucket reporting (Layer 4 of #46)
-// ============================================
 
 describe("orphan bucket reporting", () => {
   it("GET /status exposes orphanSessions field", async () => {

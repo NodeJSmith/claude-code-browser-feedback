@@ -10,10 +10,6 @@ import {
   formatFeedbackAsContent,
 } from "../src/utils.ts";
 
-// ============================================
-// deriveSessionId
-// ============================================
-
 describe("deriveSessionId", () => {
   it("returns a valid UUID-formatted session ID", () => {
     const id = deriveSessionId("/home/user/project");
@@ -38,9 +34,6 @@ describe("deriveSessionId", () => {
   });
 });
 
-// ============================================
-// isValidSessionId
-// ============================================
 
 describe("isValidSessionId", () => {
   it("accepts a valid lowercase UUID", () => {
@@ -84,9 +77,6 @@ describe("isValidSessionId", () => {
   });
 });
 
-// ============================================
-// getPendingSummary
-// ============================================
 
 describe("getPendingSummary", () => {
   it("returns empty summary for empty array", () => {
@@ -142,9 +132,6 @@ describe("getPendingSummary", () => {
   });
 });
 
-// ============================================
-// formatFeedbackAsContent
-// ============================================
 
 describe("formatFeedbackAsContent", () => {
   it("returns a text block for a single item without screenshot", () => {
@@ -210,12 +197,8 @@ describe("formatFeedbackAsContent", () => {
   });
 });
 
-// ============================================
-// detectProjectUrl
-// ============================================
-
 describe("detectProjectUrl", () => {
-  let tmpDir;
+  let tmpDir: string;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "detect-url-test-"));
