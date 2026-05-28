@@ -6,6 +6,7 @@ import { isValidSessionId } from "./utils.ts";
 const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024; // 10MB decoded limit
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+const MIME_TO_EXT: Record<string, string> = { png: "png", jpeg: "jpg", webp: "webp", gif: "gif", "svg+xml": "svg" };
 
 export function getScreenshotDir(): string {
   return process.env.FEEDBACK_SCREENSHOT_DIR || path.join(os.tmpdir(), "claude-browser-feedback", "screenshots");
@@ -21,13 +22,14 @@ export function saveScreenshot(id: string, dataUri: string, sessionId: string): 
     return null;
   }
 
-  const match = dataUri.match(/^data:image\/[^;]+;base64,(.+)$/);
+  const match = dataUri.match(/^data:image\/([^;]+);base64,(.+)$/);
   if (!match) {
     console.error(`[browser-feedback-mcp] saveScreenshot: invalid data URI for item ${id}`);
     return null;
   }
 
-  const base64Data = match[1];
+  const mimeSubtype = match[1];
+  const base64Data = match[2];
 
   const buf = Buffer.from(base64Data, "base64");
   if (buf.length === 0) {
@@ -42,9 +44,10 @@ export function saveScreenshot(id: string, dataUri: string, sessionId: string): 
     return null;
   }
 
+  const ext = MIME_TO_EXT[mimeSubtype] ?? "png";
   const screenshotDir = getScreenshotDir();
   const sessionDir = path.join(screenshotDir, sessionId);
-  const target = path.join(sessionDir, `${id}.png`);
+  const target = path.join(sessionDir, `${id}.${ext}`);
   const tmp = `${target}.${process.pid}.tmp`;
 
   try {

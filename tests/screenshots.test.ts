@@ -78,7 +78,7 @@ describe("screenshots", () => {
       const result = screenshots.saveScreenshot("item-jpeg", dataUri, sessionId);
 
       expect(result).not.toBeNull();
-      expect(result).toBe(path.join(tempDir, sessionId, "item-jpeg.png"));
+      expect(result).toBe(path.join(tempDir, sessionId, "item-jpeg.jpg"));
       expect(fs.existsSync(result!)).toBe(true);
     });
 
