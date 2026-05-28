@@ -35,6 +35,7 @@ import {
   migrateOrphanInto,
   deleteSession,
 } from "./session-store.js";
+import { createProxyClient } from "./proxy-client.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +49,7 @@ const PKG_VERSION = JSON.parse(
 const PROJECT_DIR = process.cwd();
 const SESSION_ID = deriveSessionId(PROJECT_DIR);
 const PROCESS_ID = crypto.randomUUID();
+const proxy = createProxyClient({ port: PORT, sessionId: SESSION_ID, processId: PROCESS_ID, projectDir: PROJECT_DIR });
 
 
 // Helper to parse JSON body from an HTTP request
@@ -78,130 +80,6 @@ function broadcastPendingStatus(sessionId) {
   }
 }
 
-// Helper to fetch status from the running HTTP server
-async function fetchServerStatus(sessionId) {
-  try {
-    const url = sessionId
-      ? `http://localhost:${PORT}/status?session=${sessionId}`
-      : `http://localhost:${PORT}/status`;
-    const response = await fetch(url);
-    if (response.ok) {
-      return await response.json();
-    }
-  } catch (err) {
-    // Server not running or not reachable
-  }
-  return null;
-}
-
-// Helper to fetch ready feedback from the running HTTP server
-async function fetchReadyFeedback(clear = true) {
-  try {
-    const response = await fetch(
-      `http://localhost:${PORT}/feedback?clear=${clear}&session=${SESSION_ID}`,
-    );
-    if (response.ok) {
-      return await response.json();
-    }
-  } catch (err) {
-    // Server not running or not reachable
-  }
-  return null;
-}
-
-// Helper to poll for feedback from the running HTTP server
-async function pollForFeedback(timeoutSeconds) {
-  const pollInterval = 500; // ms
-  const maxAttempts = (timeoutSeconds * 1000) / pollInterval;
-
-  for (let i = 0; i < maxAttempts; i++) {
-    const result = await fetchReadyFeedback(true);
-    if (result && result.feedback && result.feedback.length > 0) {
-      if (result.feedback.length === 1) return result.feedback[0];
-      return result.feedback;
-    }
-    await new Promise((resolve) => setTimeout(resolve, pollInterval));
-  }
-  throw new Error("Timeout waiting for browser feedback");
-}
-
-// Helper to broadcast message via the running HTTP server
-async function broadcastViaHttp(message) {
-  try {
-    const response = await fetch(`http://localhost:${PORT}/broadcast?session=${SESSION_ID}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(message),
-    });
-    if (response.ok) {
-      return await response.json();
-    }
-  } catch (err) {
-    // Server not running or not reachable
-  }
-  return null;
-}
-
-// Helper to fetch pending summary from the running HTTP server
-async function fetchPendingSummary() {
-  try {
-    const response = await fetch(`http://localhost:${PORT}/pending-summary?session=${SESSION_ID}`);
-    if (response.ok) {
-      return await response.json();
-    }
-  } catch (err) {
-    // Server not running or not reachable
-  }
-  return null;
-}
-
-// Helper to delete feedback via the running HTTP server
-async function deleteFeedbackViaHttp(id) {
-  try {
-    const response = await fetch(`http://localhost:${PORT}/feedback/${id}?session=${SESSION_ID}`, {
-      method: "DELETE",
-    });
-    if (response.ok) {
-      return await response.json();
-    }
-  } catch (err) {
-    // Server not running or not reachable
-  }
-  return null;
-}
-
-// Helper to register this session with the owner server
-async function registerSessionViaHttp() {
-  const detected = detectProjectUrl(PROJECT_DIR);
-  try {
-    await fetch(`http://localhost:${PORT}/register-session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: SESSION_ID,
-        processId: PROCESS_ID,
-        projectDir: PROJECT_DIR,
-        projectUrl: detected.url,
-        detectedFrom: detected.detectedFrom,
-      }),
-    });
-  } catch (err) {
-    // Server not reachable, session won't appear in registry
-  }
-}
-
-// Helper to unregister this session from the owner server
-async function unregisterSessionViaHttp() {
-  try {
-    await fetch(`http://localhost:${PORT}/unregister-session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: SESSION_ID, processId: PROCESS_ID }),
-    });
-  } catch (err) {
-    // Ignore errors during shutdown
-  }
-}
 
 // ============================================
 // HTTP Server - serves widget.js
@@ -1243,7 +1121,7 @@ The widget only loads in development (localhost) by default.
       // If we don't own the HTTP server, poll via HTTP
       if (!isHttpServerOwner()) {
         try {
-          const feedback = await pollForFeedback(timeoutSeconds);
+          const feedback = await proxy.pollForFeedback(timeoutSeconds);
           return {
             content: formatFeedbackAsContent(feedback),
           };
@@ -1293,7 +1171,7 @@ The widget only loads in development (localhost) by default.
 
       // If we don't own the HTTP server, fetch via HTTP
       if (!isHttpServerOwner()) {
-        const result = await fetchReadyFeedback(shouldClear);
+        const result = await proxy.fetchReadyFeedback(shouldClear);
         if (result && result.feedback) {
           if (result.feedback.length === 0) {
             const orphans = Array.isArray(result.orphans) ? result.orphans : [];
@@ -1402,7 +1280,7 @@ The widget only loads in development (localhost) by default.
     case "preview_pending_feedback": {
       // If we don't own the HTTP server, fetch via HTTP
       if (!isHttpServerOwner()) {
-        const result = await fetchPendingSummary();
+        const result = await proxy.fetchPendingSummary();
         if (result) {
           if (result.count === 0) {
             return {
@@ -1471,7 +1349,7 @@ The widget only loads in development (localhost) by default.
 
       // If we don't own the HTTP server, delete via HTTP
       if (!isHttpServerOwner()) {
-        const result = await deleteFeedbackViaHttp(id);
+        const result = await proxy.deleteFeedbackViaHttp(id);
         if (result) {
           return {
             content: [
@@ -1524,7 +1402,7 @@ The widget only loads in development (localhost) by default.
       // If we don't own the HTTP server, use a simpler polling approach
       if (!isHttpServerOwner()) {
         // Check connection status first
-        const status = await fetchServerStatus(SESSION_ID);
+        const status = await proxy.fetchServerStatus(SESSION_ID);
         if (!status || status.connectedClients === 0) {
           return {
             content: [
@@ -1537,8 +1415,8 @@ The widget only loads in development (localhost) by default.
         }
 
         // Clear any existing feedback and broadcast request
-        await fetchReadyFeedback(true);
-        await broadcastViaHttp({
+        await proxy.fetchReadyFeedback(true);
+        await proxy.broadcastViaHttp({
           type: "request_multiple_annotations",
           message: message,
         });
@@ -1550,7 +1428,7 @@ The widget only loads in development (localhost) by default.
         const idleTimeout = 5000; // 5 seconds of no new feedback = done
 
         while (Date.now() - startTime < timeoutSeconds * 1000) {
-          const result = await fetchReadyFeedback(true);
+          const result = await proxy.fetchReadyFeedback(true);
           if (result && result.feedback && result.feedback.length > 0) {
             allFeedback.push(...result.feedback);
             lastFeedbackTime = Date.now();
@@ -1656,7 +1534,7 @@ The widget only loads in development (localhost) by default.
     case "get_connection_status": {
       // If we don't own the HTTP server, fetch status from the running server
       if (!isHttpServerOwner()) {
-        const status = await fetchServerStatus(SESSION_ID);
+        const status = await proxy.fetchServerStatus(SESSION_ID);
         if (status) {
           return {
             content: [
@@ -1727,7 +1605,7 @@ The widget only loads in development (localhost) by default.
 
       // If we don't own the HTTP server, broadcast via HTTP
       if (!isHttpServerOwner()) {
-        const result = await broadcastViaHttp({
+        const result = await proxy.broadcastViaHttp({
           type: "request_annotation",
           message: message,
         });
@@ -2001,7 +1879,7 @@ function shutdown(reason) {
     }, 2000);
   } else {
     // Unregister from owner server before exit
-    unregisterSessionViaHttp().finally(() => {
+    proxy.unregisterSession().finally(() => {
       process.exit(0);
     });
     // Force exit after timeout
@@ -2054,7 +1932,7 @@ async function tryListenWithRetry(maxRetries = 3, retryDelay = 1000) {
       }
 
       // Port in use — check if the existing server is actually healthy
-      const status = await fetchServerStatus();
+      const status = await proxy.fetchServerStatus();
       if (status) {
         console.error(`[browser-feedback-mcp] Port ${PORT} is in use by a healthy server.`);
         console.error(
@@ -2118,7 +1996,7 @@ async function main() {
     console.error(`[browser-feedback-mcp] Session: ${SESSION_ID}`);
   } else {
     // Proxy registers via HTTP
-    await registerSessionViaHttp();
+    await proxy.registerSession();
     console.error(`[browser-feedback-mcp] Session registered: ${SESSION_ID}`);
   }
 }
