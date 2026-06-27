@@ -25,6 +25,14 @@ describe("getElementSelector", () => {
     expect(getElementSelector(el)).toBe("p");
   });
 
+  it("omits the class part when className is only whitespace", () => {
+    const el = document.createElement("div");
+    el.className = "   ";
+    // A whitespace-only class must not produce a trailing dot ("div."),
+    // which is a malformed selector that throws in querySelector.
+    expect(getElementSelector(el)).toBe("div");
+  });
+
   it("adds :nth-of-type when siblings share the same tag", () => {
     const parent = document.createElement("ul");
     const li1 = document.createElement("li");
