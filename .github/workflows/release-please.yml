@@ -1,0 +1,57 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # manual re-run; behaves as if main was just pushed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+# release-please opens/updates the release PR and, when that PR merges, creates
+# the GitHub release + tag and bumps the version in package.json, package-lock.json,
+# and (via extra-files) .claude-plugin/plugin.json.
+#
+# Seeding (first run only): .release-please-manifest.json pins the current version
+# (0.7.0), and release-please-config.json's bootstrap-sha pins the commit to start
+# parsing conventional commits from — set to main's HEAD at setup time so the first
+# changelog covers commits made *after* this was wired up, not all of git history.
+#
+# It authenticates with a GitHub App token (secrets RELEASE_PLEASE_APP_ID /
+# RELEASE_PLEASE_APP_PRIVATE_KEY, scoped down to contents + pull-requests below)
+# rather than the default GITHUB_TOKEN for two reasons:
+#   1. GitHub suppresses workflow runs for events made with GITHUB_TOKEN, so a
+#      release PR opened with it would never trigger the lint / tests checks.
+#   2. The release this action publishes must fire the `release: published` event
+#      that release-extension.yml listens for. A release created with GITHUB_TOKEN
+#      does not trigger downstream workflows; one created with the App token does,
+#      so the extension zip gets packaged and attached automatically.
+#
+# Setup (done): a GitHub App with Contents and Pull requests read/write is installed
+# on this repo, and its App ID + private key are stored as the two repo secrets above.
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # App token (not GITHUB_TOKEN) — see header for why. permission-* scopes
+      # the minted token down to exactly what release-please needs.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
