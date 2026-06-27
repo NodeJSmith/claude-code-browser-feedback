@@ -1,14 +1,20 @@
 {
   "name": "itkdev-browser-feedback",
   "description": "Browser-based visual feedback and annotation MCP server for Claude Code",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "author": {
     "name": "ITK Dev",
     "email": "itkdev@mkb.aarhus.dk"
   },
   "repository": "https://github.com/itk-dev/mcp-claude-code-browser-feedback",
   "license": "MIT",
-  "keywords": ["itk-dev", "mcp", "browser", "feedback", "annotation"],
+  "keywords": [
+    "itk-dev",
+    "mcp",
+    "browser",
+    "feedback",
+    "annotation"
+  ],
   "hooks": {
     "SessionStart": [
       {
@@ -24,7 +30,9 @@
   "mcpServers": {
     "browser-feedback": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/src/server.js"]
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/src/server.js"
+      ]
     }
   }
 }
