@@ -25,17 +25,27 @@ function activate(serverUrl, sessionId) {
   }
 
   currentSessionId = sessionId;
-  injectedScript = document.createElement("script");
+  const scriptEl = document.createElement("script");
+  injectedScript = scriptEl;
   const url = sessionId ? `${serverUrl}/widget.js?session=${sessionId}` : `${serverUrl}/widget.js`;
-  injectedScript.src = url;
-  injectedScript.id = "claude-feedback-ext-script";
-  injectedScript.onload = () => log("widget.js loaded from", url);
-  injectedScript.onerror = () =>
+  scriptEl.src = url;
+  scriptEl.id = "claude-feedback-ext-script";
+  scriptEl.onload = () => log("widget.js loaded from", url);
+  scriptEl.onerror = () => {
     logError(
       `failed to load widget.js from ${url} — the server is not reachable from this browser. ` +
         `Try opening ${serverUrl}/sessions in a tab to confirm.`,
     );
-  document.documentElement.appendChild(injectedScript);
+    scriptEl.remove();
+    // Clear local state so a later enable attempt isn't blocked by the "already
+    // active" fast path — but only if nothing has replaced this script since
+    // (a newer activate() may have swapped in a different element).
+    if (injectedScript === scriptEl) {
+      injectedScript = null;
+      currentSessionId = null;
+    }
+  };
+  document.documentElement.appendChild(scriptEl);
   log("injecting widget script:", url);
 }
 

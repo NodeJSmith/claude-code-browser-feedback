@@ -114,9 +114,19 @@ function showSessionPicker(sessions) {
         (resp) => {
           if (chrome.runtime.lastError) {
             logError("selectSession failed", chrome.runtime.lastError);
+            setStatus("disconnected", "Could not enable on this page");
+            setPending(false);
             return;
           }
           log("selectSession ->", resp);
+          if (!resp || !resp.active) {
+            // Background couldn't activate (e.g. page blocks injection). Surface the
+            // error and keep the picker open so the user can try another session.
+            logError("background reported error during selectSession:", resp && resp.error);
+            setStatus("disconnected", (resp && resp.error) || "Could not enable on this page");
+            setPending(false);
+            return;
+          }
           sessionPickerEl.style.display = "none";
           init();
         },
@@ -274,6 +284,11 @@ toggleEl.addEventListener("change", () => {
       if (response.active) {
         // Re-init to fetch session info and show details
         init();
+      } else if (response.error) {
+        // e.g. the page blocks injection — show why instead of silently reverting.
+        widgetDetailsEl.style.display = "block";
+        activeSessionEl.style.display = "none";
+        setStatus("disconnected", response.error);
       } else {
         hideDetails();
       }

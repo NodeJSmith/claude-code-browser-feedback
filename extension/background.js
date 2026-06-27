@@ -223,12 +223,16 @@ async function toggleTab(tabId) {
     return { active: false, needsSessionPicker: true, sessions, serverUrl };
   }
 
-  activeTabs.add(tabId);
-  tabSessionMap.set(tabId, sessionId);
   const delivered = await sendToTab(tabId, { action: "activate", serverUrl, sessionId });
   if (delivered === null) {
-    warn(`activate not delivered to tab ${tabId}; the widget may not appear on this page`);
+    // Content script unreachable (blocked page: chrome://, web store, PDF viewer).
+    // Nothing was injected — don't mark the tab active or claim success.
+    warn(`activate not delivered to tab ${tabId}; not marking active (page blocks injection?)`);
+    return { active: false, error: "Could not inject the widget into this page" };
   }
+
+  activeTabs.add(tabId);
+  tabSessionMap.set(tabId, sessionId);
   updateBadge(tabId, true);
   persistActiveTabs();
   log(`activated tab ${tabId} with session ${sessionId}`);
@@ -324,12 +328,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     getServerUrl()
       .then(async (serverUrl) => {
-        // Mark active only inside the success path — a rejection must not leave the
-        // tab flagged active while the popup is told the selection failed.
+        await sendToTab(tabId, { action: "deactivate" });
+        const delivered = await sendToTab(tabId, { action: "activate", serverUrl, sessionId });
+        if (delivered === null) {
+          // Page blocks injection — don't mark active, persist, or claim success.
+          warn(`selectSession: activate not delivered to tab ${tabId}; not marking active`);
+          sendResponse({ active: false, error: "Could not inject the widget into this page" });
+          return;
+        }
+        // Mark active only after a delivered activate.
         tabSessionMap.set(tabId, sessionId);
         activeTabs.add(tabId);
-        await sendToTab(tabId, { action: "deactivate" });
-        await sendToTab(tabId, { action: "activate", serverUrl, sessionId });
         updateBadge(tabId, true);
         persistActiveTabs();
         log(`selected session ${sessionId} for tab ${tabId}`);
@@ -352,9 +361,16 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
       const serverUrl = await getServerUrl();
       const cachedSession = tabSessionMap.get(tabId) || null;
       const sessionId = await validateOrRefreshSession(tabId, cachedSession, serverUrl);
-      updateBadge(tabId, true);
-      await sendToTab(tabId, { action: "activate", serverUrl, sessionId });
-      log(`re-injected widget after navigation in tab ${tabId}`);
+      const delivered = await sendToTab(tabId, { action: "activate", serverUrl, sessionId });
+      // Keep the tab enabled across a blocked-page detour (e.g. a PDF or chrome://
+      // page, then back), but make the badge reflect whether the widget is actually
+      // injected rather than claiming ON when nothing was delivered.
+      updateBadge(tabId, delivered !== null);
+      if (delivered === null) {
+        warn(`re-injection not delivered to tab ${tabId} (page blocks injection?)`);
+      } else {
+        log(`re-injected widget after navigation in tab ${tabId}`);
+      }
     } catch (err) {
       logError(`re-injection failed for tab ${tabId}`, err);
     }
