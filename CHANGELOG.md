@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1](https://github.com/NodeJSmith/claude-code-browser-feedback/compare/mcp-claude-code-browser-feedback-v0.7.0...mcp-claude-code-browser-feedback-v0.7.1) (2026-06-27)
+
+
+### Bug Fixes
+
+* **widget:** omit class part for whitespace-only className ([#7](https://github.com/NodeJSmith/claude-code-browser-feedback/issues/7)) ([76d048c](https://github.com/NodeJSmith/claude-code-browser-feedback/commit/76d048c65d16d9bf7b44f74ef31f60180a0f0d22))
+
 ## [Unreleased]
 
 ### Fixed
