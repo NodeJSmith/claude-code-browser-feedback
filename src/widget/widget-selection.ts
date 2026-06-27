@@ -2,7 +2,10 @@ export function getElementSelector(el: Element): string {
   if (el.id) return `#${el.id}`;
 
   let selector = el.tagName.toLowerCase();
-  if (el.className && typeof el.className === "string") {
+  // className is an SVGAnimatedString (not a string) on SVG elements; the typeof
+  // guard skips those. The trim() guard skips empty/whitespace-only classes,
+  // which would otherwise build a malformed "tag." selector with a trailing dot.
+  if (typeof el.className === "string" && el.className.trim()) {
     selector += "." + el.className.trim().split(/\s+/).join(".");
   }
 
