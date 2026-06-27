@@ -11,12 +11,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
+      # tag_name flows through env, not inline ${{ }}, so the release tag is never
+      # spliced into the shell command (avoids template injection).
       - name: Create extension zip
-        run: cd extension && zip -r ../browser-feedback-extension-${{ github.event.release.tag_name }}.zip .
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: cd extension && zip -r "../browser-feedback-extension-${TAG}.zip" .
 
       - name: Upload to release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ github.event.release.tag_name }} browser-feedback-extension-${{ github.event.release.tag_name }}.zip
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" "browser-feedback-extension-${TAG}.zip"
