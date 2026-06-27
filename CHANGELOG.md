@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2](https://github.com/NodeJSmith/claude-code-browser-feedback/compare/mcp-claude-code-browser-feedback-v0.7.1...mcp-claude-code-browser-feedback-v0.7.2) (2026-06-27)
+
+
+### Bug Fixes
+
+* **extension:** surface failures and add feedback to enable flow ([#11](https://github.com/NodeJSmith/claude-code-browser-feedback/issues/11)) ([b37deb7](https://github.com/NodeJSmith/claude-code-browser-feedback/commit/b37deb74705a4a3208d73c95ca0240a14fd3c77d))
+
 ## [0.7.1](https://github.com/NodeJSmith/claude-code-browser-feedback/compare/mcp-claude-code-browser-feedback-v0.7.0...mcp-claude-code-browser-feedback-v0.7.1) (2026-06-27)
 
 
