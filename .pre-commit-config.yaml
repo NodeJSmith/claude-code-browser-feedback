@@ -1,0 +1,69 @@
+# prek / pre-commit configuration.
+#
+# prek is a faster drop-in for pre-commit that reads this same file. Install the
+# hooks locally with `prek install` (or `pre-commit install`).
+#
+# Staging: fast autofixers and hygiene checks run at pre-commit; the heavier
+# whole-project type check runs at pre-push. default_install_hook_types wires both
+# stages automatically. Tests run in CI only — too slow to gate every commit.
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: check-yaml
+      - id: check-json
+        # tsconfig.json is JSONC (has comments); check-json only accepts strict JSON.
+        exclude: ^tsconfig\.json$
+      - id: check-added-large-files
+
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.46.3
+    hooks:
+      - id: typos
+        args: [--force-exclude]
+
+  - repo: local
+    hooks:
+      # Prettier and ESLint run against the repo's own pinned versions
+      # (package.json) so local autofixing and the CI Lint workflow share one
+      # source of truth — same tools the workflow runs, but --write/--fix here to
+      # fix in place at commit time instead of just failing.
+      - id: prettier
+        name: prettier (write)
+        language: system
+        entry: npx prettier --write --ignore-unknown
+        types_or: [ts, javascript, json, yaml, markdown, css, html]
+
+      - id: eslint
+        name: eslint (fix)
+        language: system
+        entry: npx eslint --fix --no-warn-ignored
+        types_or: [ts, javascript]
+
+      # Whole-project type check (pass_filenames: false) — one file's change can
+      # break types in another, so per-file args would be wrong here. Heavier, so
+      # gated to pre-push rather than every commit.
+      - id: typecheck
+        name: tsc --noEmit (typecheck)
+        language: system
+        entry: npm run typecheck
+        pass_filenames: false
+        types_or: [ts]
+        stages: [pre-push]
+
+      - id: zizmor
+        name: zizmor (GitHub Actions security)
+        language: system
+        # --offline keeps zizmor from calling the GitHub API (audits the static
+        # workflow files only); unsetting the tokens guarantees offline mode even
+        # when a token is present in the environment.
+        entry: env -u GH_TOKEN -u GITHUB_TOKEN uvx zizmor@1.25.2 --offline
+        files: ^\.github/workflows/
