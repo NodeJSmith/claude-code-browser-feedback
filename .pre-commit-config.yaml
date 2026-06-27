@@ -65,5 +65,5 @@ repos:
         # --offline keeps zizmor from calling the GitHub API (audits the static
         # workflow files only); unsetting the tokens guarantees offline mode even
         # when a token is present in the environment.
-        entry: env -u GH_TOKEN -u GITHUB_TOKEN uvx zizmor@1.25.2 --offline
+        entry: env -u GH_TOKEN -u GITHUB_TOKEN uvx zizmor@1.26.1 --offline
         files: ^\.github/workflows/

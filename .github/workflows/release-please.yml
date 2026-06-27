@@ -5,9 +5,10 @@ on:
     branches: [main]
   workflow_dispatch: # manual re-run; behaves as if main was just pushed
 
-permissions:
-  contents: write
-  pull-requests: write
+# No default-GITHUB_TOKEN scopes needed: every step authenticates with the App
+# token minted below, never GITHUB_TOKEN. The App token's own scopes are set on
+# the create-github-app-token step (permission-* inputs).
+permissions: {}
 
 concurrency:
   group: release-please
