@@ -1,3 +1,7 @@
 node_modules/
 dist/
 CHANGELOG.md
+# release-please re-serializes this file when bumping its version (extra-files
+# json updater), expanding arrays in a way prettier --check rejects. Let
+# release-please own its formatting so release PRs don't fail the lint gate.
+.claude-plugin/plugin.json
